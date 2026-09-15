@@ -1,0 +1,3260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>吉他谱弹唱阅读器</title>
+<style>
+/* ==================== 基础重置与变量 ==================== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+/* ==================== 皮肤主题变量 ==================== */
+/* 暗夜（默认） */
+:root{
+  --bg:#0d1117;--surface:#161b22;--surface-2:#21262d;--surface-3:#30363d;
+  --border:#30363d;--text:#e6edf3;--text-muted:#8b949e;--text-dim:#6e7681;
+  --primary:#58a6ff;--primary-hover:#79b8ff;--primary-dim:rgba(88,166,255,.15);
+  --danger:#f85149;--warning:#d29922;--success:#3fb950;--star:#ffa657;
+  --page-bg:#1a1a1a;--display-bg:#000;
+  --radius:8px;--radius-sm:4px;--sidebar-w:280px;--toolbar-h:48px;
+  --statusbar-h:40px;--transition:.2s ease;
+}
+/* 护眼绿 */
+[data-theme="green"]{
+  --bg:#1a2e1a;--surface:#1f3a1f;--surface-2:#2a4a2a;--surface-3:#3a5a3a;
+  --border:#3a5a3a;--text:#d4e8d4;--text-muted:#8aaa8a;--text-dim:#6a8a6a;
+  --primary:#66cc66;--primary-hover:#88dd88;--primary-dim:rgba(102,204,102,.15);
+  --danger:#e07070;--warning:#d4a843;--success:#5cb85c;--star:#e8a847;
+  --page-bg:#223322;--display-bg:#0a1a0a;
+}
+/* 羊皮纸（亮色） */
+[data-theme="parchment"]{
+  --bg:#f5f0e1;--surface:#ede5d0;--surface-2:#e0d5b8;--surface-3:#d0c4a0;
+  --border:#c0b090;--text:#3a3020;--text-muted:#6a5d40;--text-dim:#8a7d60;
+  --primary:#8b6914;--primary-hover:#a87d20;--primary-dim:rgba(139,105,20,.12);
+  --danger:#c0392b;--warning:#d4a843;--success:#27ae60;--star:#e8a847;
+  --page-bg:#fffaf0;--display-bg:#e8dfc8;
+}
+/* 高对比深蓝 */
+[data-theme="ocean"]{
+  --bg:#0a1628;--surface:#102038;--surface-2:#1a3050;--surface-3:#244068;
+  --border:#2a4a70;--text:#e0e8f0;--text-muted:#8aa0b8;--text-dim:#6a8098;
+  --primary:#00d4ff;--primary-hover:#40e0ff;--primary-dim:rgba(0,212,255,.15);
+  --danger:#ff5050;--warning:#ffcc00;--success:#00ff88;--star:#ffaa00;
+  --page-bg:#0d1f36;--display-bg:#050d1a;
+}
+
+html,body{height:100%;overflow:hidden}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
+  background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;user-select:none;
+}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select{font-family:inherit;font-size:inherit}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--text-dim)}
+
+/* ==================== 主布局 ==================== */
+#app{display:flex;height:100vh;width:100vw}
+#sidebar{
+  width:var(--sidebar-w);min-width:var(--sidebar-w);background:var(--surface);
+  border-right:1px solid var(--border);display:flex;flex-direction:column;
+  transition:width var(--transition),min-width var(--transition);overflow:hidden;
+}
+#sidebar.collapsed{width:0;min-width:0;border-right:none}
+/* 移动端侧栏浮层遮罩（桌面端始终隐藏） */
+#sidebar-backdrop{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:150;
+}
+#sidebar-backdrop.show{display:block}
+#main{flex:1;display:flex;flex-direction:column;min-width:0}
+
+/* ==================== 侧栏 ==================== */
+.sidebar-header{padding:12px;border-bottom:1px solid var(--border)}
+.sidebar-header h1{font-size:16px;font-weight:600;margin-bottom:8px}
+.search-box input{
+  width:100%;padding:6px 10px;background:var(--surface-2);
+  border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);
+}
+.search-box input:focus{outline:none;border-color:var(--primary)}
+.sidebar-controls{padding:8px 12px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
+#sort-select{
+  padding:4px 8px;background:var(--surface-2);border:1px solid var(--border);
+  border-radius:var(--radius-sm);color:var(--text);cursor:pointer;
+}
+.tag-bar{display:flex;flex-wrap:wrap;gap:4px}
+.tag-chip{
+  padding:2px 8px;font-size:11px;background:var(--surface-2);
+  border:1px solid var(--border);border-radius:12px;cursor:pointer;
+  transition:all var(--transition);color:var(--text-muted);
+}
+.tag-chip:hover{border-color:var(--primary)}
+.tag-chip.active{background:var(--primary-dim);border-color:var(--primary);color:var(--primary)}
+#song-list{flex:1;overflow-y:auto;padding:4px 0}
+.song-item{
+  padding:8px 12px;cursor:pointer;border-left:3px solid transparent;
+  transition:background var(--transition);display:flex;align-items:center;gap:8px;
+}
+.song-item:hover{background:var(--surface-2)}
+.song-item.active{background:var(--primary-dim);border-left-color:var(--primary)}
+.song-item .song-info{flex:1;min-width:0}
+.song-item .song-title{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.song-item .song-meta{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.song-item .song-pages{font-size:11px;color:var(--text-dim);flex-shrink:0}
+/* 通用星标按钮（工具栏的 #current-star 也复用它，之前只有列表内的选择器，工具栏那颗没样式） */
+.star-btn{font-size:16px;line-height:1;opacity:.5;transition:opacity var(--transition),color var(--transition);flex-shrink:0;cursor:pointer}
+.star-btn:hover{opacity:.85}
+.star-btn.starred{opacity:1;color:var(--star)}
+.song-item .star-btn{opacity:.4}
+.song-item .star-btn:hover{opacity:.8}
+.song-item .star-btn.starred{opacity:1;color:var(--star)}
+.song-item .edit-btn{font-size:14px;opacity:0;transition:opacity var(--transition);flex-shrink:0;padding:2px 4px;border-radius:3px}
+.song-item:hover .edit-btn{opacity:.6}
+.song-item .edit-btn:hover{opacity:1;background:var(--surface-3)}
+
+/* 多选模式 */
+.song-item .song-checkbox{
+  width:16px;height:16px;flex-shrink:0;cursor:pointer;
+  border:2px solid var(--border);border-radius:3px;
+  display:none;align-items:center;justify-content:center;
+  transition:all var(--transition);background:var(--surface);
+}
+.song-item .song-checkbox.checked{
+  background:var(--primary);border-color:var(--primary);
+}
+.song-item .song-checkbox.checked::after{
+  content:'✓';color:#fff;font-size:12px;font-weight:bold;
+}
+/* 多选模式开启时显示复选框 */
+#song-list.multi-select .song-item .song-checkbox{display:flex}
+#song-list.multi-select .song-item .edit-btn{display:none}
+#song-list.multi-select .song-item.selected{background:var(--primary-dim)}
+
+/* 多选操作栏 */
+.multi-select-bar{
+  display:none;padding:8px 12px;border-bottom:1px solid var(--border);
+  background:var(--surface);gap:6px;align-items:center;flex-wrap:wrap;
+}
+.multi-select-bar.show{display:flex}
+.multi-select-bar .ms-info{
+  flex:1;font-size:12px;color:var(--text-muted);min-width:80px;
+}
+.multi-select-bar button{
+  padding:4px 10px;font-size:12px;background:var(--surface-2);
+  border:1px solid var(--border);border-radius:var(--radius-sm);
+  color:var(--text);transition:all var(--transition);
+}
+.multi-select-bar button:hover{background:var(--surface-3);border-color:var(--primary)}
+.multi-select-bar button.danger{color:var(--danger);border-color:var(--danger)}
+.multi-select-bar button.danger:hover{background:var(--danger);color:#fff}
+.sidebar-footer{padding:8px 12px;border-top:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap}
+.sidebar-footer button{
+  flex:1;padding:8px;background:var(--surface-2);border:1px solid var(--border);
+  border-radius:var(--radius-sm);font-size:12px;transition:all var(--transition);color:var(--text);
+}
+.sidebar-footer button:hover{background:var(--surface-3);border-color:var(--primary)}
+.sidebar-footer button.primary{background:var(--primary-dim);border-color:var(--primary);color:var(--primary)}
+
+/* ==================== 工具栏 ==================== */
+#toolbar{
+  height:var(--toolbar-h);min-height:var(--toolbar-h);background:var(--surface);
+  border-bottom:1px solid var(--border);display:flex;align-items:center;
+  padding:0 12px;gap:12px;font-size:13px;overflow-x:auto;white-space:nowrap;
+}
+.toolbar-group{display:flex;align-items:center;gap:6px}
+.toolbar-group+.toolbar-group{border-left:1px solid var(--border);padding-left:12px}
+#song-title-bar{font-weight:600;display:flex;align-items:center;gap:6px;min-width:0}
+#song-title-bar .title-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
+#key-capo-info{color:var(--text-muted);font-size:12px;display:flex;gap:8px}
+#key-capo-info span{background:var(--surface-2);padding:2px 8px;border-radius:var(--radius-sm)}
+.btn-group{display:flex;background:var(--surface-2);border-radius:var(--radius-sm);overflow:hidden}
+.btn-group button{padding:4px 10px;font-size:12px;border:1px solid var(--border);margin-left:-1px;transition:all var(--transition);color:var(--text)}
+.btn-group button:hover{background:var(--surface-3)}
+.btn-group button.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+/* 超出当前谱子页数的档位不可点 */
+.btn-group button:disabled{opacity:.3;cursor:not-allowed}
+.btn-group button:disabled:hover{background:var(--surface-2)}
+.tool-btn{padding:4px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;transition:all var(--transition);display:flex;align-items:center;gap:4px;color:var(--text)}
+.tool-btn:hover{background:var(--surface-3);border-color:var(--primary)}
+.tool-btn.active{background:var(--primary-dim);border-color:var(--primary);color:var(--primary)}
+#sidebar-toggle{padding:4px 8px;font-size:16px}
+
+/* ==================== 皮肤选择器 ==================== */
+#theme-selector{display:flex;gap:4px;align-items:center}
+.theme-btn{
+  width:20px;height:20px;border-radius:50%;border:2px solid var(--border);
+  cursor:pointer;transition:all var(--transition);padding:0;
+}
+.theme-btn:hover{transform:scale(1.15)}
+.theme-btn.active{border-color:var(--primary);transform:scale(1.15)}
+.theme-btn[data-theme="dark"]{background:#0d1117}
+.theme-btn[data-theme="green"]{background:#1a2e1a}
+.theme-btn[data-theme="parchment"]{background:#f5f0e1}
+.theme-btn[data-theme="ocean"]{background:#0a1628}
+
+/* ==================== 显示区 ==================== */
+#display-area{
+  flex:1;position:relative;overflow:hidden;background:var(--display-bg);
+  display:flex;align-items:center;justify-content:center;
+}
+#pages-container{
+  width:100%;height:100%;display:grid;gap:2px;padding:2px;
+  overflow:hidden;
+  /* 垂直方向交给浏览器原生滚动，水平方向留给 swipe 切屏手势 */
+  touch-action:pan-y;
+}
+/* 适应页模式：每页按自身宽高比缩放后紧挨着居中排列。
+   以前用 repeat(cols,1fr) 把每页撑成等宽列，纵向页面横向填不满列宽，
+   于是两页之间会空出一大块；改成按实际尺寸排布后页面自然贴在一起。 */
+#pages-container.fit-boxes{
+  display:grid;
+  justify-content:center;
+  align-content:center;
+  overflow:hidden;
+}
+#pages-container.fit-boxes .page-slot{
+  justify-self:center;
+  align-self:center;
+}
+/* 宽排（4 页横向）放不下时不再缩小页面，改为容器横向滚动 */
+#pages-container.fit-boxes.hscroll{
+  overflow-x:auto;
+  overflow-y:hidden;
+  /* 横向交给原生滚动，纵向留给切屏手势 */
+  touch-action:pan-x pan-y;
+}
+.page-slot{
+  position:relative;display:flex;align-items:center;justify-content:center;
+  overflow:hidden;background:var(--page-bg);border-radius:2px;min-height:0;min-width:0;
+}
+.page-slot img,.page-slot canvas{
+  max-width:100%;max-height:100%;object-fit:contain;
+}
+.page-error{
+  color:var(--danger);font-size:12px;text-align:center;padding:20px;
+}
+
+/* 定时翻页的间隔设定 */
+.timer-control{
+  display:flex;align-items:center;gap:4px;padding:2px 8px;
+  background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);
+  font-size:11px;color:var(--text-muted);
+}
+.timer-control input[type="number"]{
+  width:52px;padding:2px 4px;text-align:center;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-sm);color:var(--text);font-size:12px;
+}
+.timer-control input[type="number"]:focus{outline:none;border-color:var(--primary)}
+
+/* ==================== 空状态 ==================== */
+#empty-state{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:16px;color:var(--text-muted);
+  pointer-events:none;
+}
+#empty-state .icon{font-size:64px;opacity:.3}
+#empty-state h2{font-size:20px;font-weight:400}
+#empty-state p{font-size:14px;text-align:center;max-width:400px;line-height:1.8}
+#empty-state .drag-hint{
+  border:2px dashed var(--border);border-radius:12px;padding:40px 60px;
+  text-align:center;transition:border-color var(--transition);pointer-events:auto;
+}
+#empty-state.drag-over .drag-hint{border-color:var(--primary);background:var(--primary-dim)}
+#empty-state .btn-primary{pointer-events:auto;margin-top:8px}
+
+/* ==================== 拖拽高亮 ==================== */
+#display-area.drag-over{background:var(--primary-dim)}
+#display-area.drag-over::after{
+  content:"释放以导入文件";position:absolute;inset:8px;border:3px dashed var(--primary);
+  border-radius:8px;display:flex;align-items:center;justify-content:center;
+  font-size:20px;color:var(--primary);pointer-events:none;
+}
+
+/* ==================== 状态栏 ==================== */
+#status-bar{
+  height:var(--statusbar-h);min-height:var(--statusbar-h);background:var(--surface);
+  border-top:1px solid var(--border);display:flex;align-items:center;
+  padding:0 16px;gap:16px;font-size:12px;
+}
+#status-bar .page-info{flex:1;text-align:center;color:var(--text-muted)}
+#status-bar .page-info strong{color:var(--text)}
+.status-progress{flex:1;height:2px;background:var(--surface-3);border-radius:1px;overflow:hidden;max-width:200px}
+.status-progress-fill{height:100%;background:var(--primary);transition:width .3s ease}
+.nav-btn{padding:6px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);transition:all var(--transition);color:var(--text)}
+.nav-btn:hover{background:var(--surface-3);border-color:var(--primary)}
+.nav-btn:disabled{opacity:.3;cursor:not-allowed}
+
+/* ==================== 倒计时环 ==================== */
+#countdown-ring{
+  position:absolute;bottom:16px;right:16px;width:56px;height:56px;
+  display:none;align-items:center;justify-content:center;z-index:10;
+}
+#countdown-ring.show{display:flex}
+#countdown-ring svg{position:absolute;width:100%;height:100%;transform:rotate(-90deg)}
+#countdown-ring .ring-bg{fill:none;stroke:rgba(255,255,255,.1);stroke-width:4}
+#countdown-ring .ring-fg{fill:none;stroke:var(--primary);stroke-width:4;stroke-linecap:round;transition:stroke-dashoffset .1s linear}
+#countdown-text{font-size:16px;font-weight:700;z-index:1}
+
+/* ==================== Toast ==================== */
+#toast-container{
+  position:fixed;top:16px;right:16px;z-index:9999;
+  display:flex;flex-direction:column;gap:8px;pointer-events:none;
+}
+.toast{
+  padding:10px 16px;border-radius:var(--radius-sm);font-size:13px;
+  background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+  box-shadow:0 4px 12px rgba(0,0,0,.3);animation:toastIn .3s ease;
+  max-width:360px;pointer-events:auto;
+}
+.toast.info{border-left:3px solid var(--primary)}
+.toast.success{border-left:3px solid var(--success)}
+.toast.warning{border-left:3px solid var(--warning)}
+.toast.error{border-left:3px solid var(--danger)}
+@keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+@keyframes toastOut{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(20px)}}
+
+/* ==================== 模态框 ==================== */
+#modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;
+  display:none;align-items:center;justify-content:center;padding:20px;
+}
+#modal-overlay.show{display:flex}
+#modal{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  max-width:600px;width:100%;max-height:85vh;overflow-y:auto;padding:24px;
+}
+#modal h2{font-size:18px;margin-bottom:8px}
+.modal-subtitle{color:var(--text-muted);font-size:13px;margin-bottom:16px}
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px}
+.form-group input,.form-group select,.form-group textarea{
+  width:100%;padding:8px 10px;background:var(--surface-2);
+  border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);
+}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{
+  outline:none;border-color:var(--primary);
+}
+.form-row{display:flex;gap:12px}
+.form-row .form-group{flex:1}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+.btn-primary,.btn-secondary,.btn-danger{
+  padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;
+  border:1px solid var(--border);transition:all var(--transition);
+}
+.btn-primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+.btn-primary:hover{background:var(--primary-hover)}
+.btn-secondary{background:var(--surface-2);color:var(--text)}
+.btn-secondary:hover{background:var(--surface-3)}
+.btn-danger{background:var(--danger);color:#fff;border-color:var(--danger)}
+.btn-danger:hover{opacity:.85}
+
+/* ==================== 导入确认列表 ==================== */
+.import-list{max-height:50vh;overflow-y:auto;margin-bottom:16px}
+.import-item{
+  padding:12px;background:var(--surface-2);border:1px solid var(--border);
+  border-radius:var(--radius-sm);margin-bottom:8px;
+}
+.import-item-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.import-item-header .page-count{font-size:12px;color:var(--text-muted)}
+.dup-warning{color:var(--warning);font-size:11px}
+
+/* ==================== 进度条 ==================== */
+#progress-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;
+  display:none;align-items:center;justify-content:center;
+}
+#progress-overlay.show{display:flex}
+#progress-box{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:24px 32px;min-width:300px;text-align:center;
+}
+#progress-title{font-size:14px;margin-bottom:12px}
+.progress-bar{height:6px;background:var(--surface-3);border-radius:3px;overflow:hidden;margin-bottom:8px}
+.progress-bar-fill{height:100%;background:var(--primary);transition:width .3s ease;width:0}
+.progress-text{font-size:12px;color:var(--text-muted)}
+
+/* ==================== 全屏：只留谱面 ==================== */
+/* 进入全屏后把上下两条工具条收起来，把可用高度全让给曲谱 */
+body.fullscreen #toolbar,
+body.fullscreen #status-bar{display:none}
+
+/* ==================== 响应式 ==================== */
+@media(max-width:768px){
+  :root{--sidebar-w:260px}
+  #toolbar{font-size:12px;gap:8px;padding:0 8px}
+  .toolbar-group+.toolbar-group{padding-left:8px}
+  #song-title-bar .title-text{max-width:100px}
+  /* 侧栏改为浮层抽屉：收起时完全不占版面，展开时盖在内容上 */
+  #sidebar{
+    position:fixed;top:0;left:0;bottom:0;z-index:200;width:var(--sidebar-w);
+    box-shadow:2px 0 12px rgba(0,0,0,.35);
+    transition:transform var(--transition);
+  }
+  #sidebar.collapsed{width:var(--sidebar-w);min-width:var(--sidebar-w);transform:translateX(-100%)}
+  /* 小屏省掉次要控件，避免工具栏被挤爆 */
+  #key-capo-info{display:none}
+  .timer-control span{display:none}
+  #status-bar{padding:0 8px;gap:8px}
+  .nav-btn{padding:6px 8px}
+}
+
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- ==================== 侧栏 ==================== -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <h1>🎸 吉他谱阅读器</h1>
+      <div class="search-box">
+        <input type="text" id="search-input" placeholder="搜索歌名/歌手/标签..." />
+      </div>
+    </div>
+    <div class="sidebar-controls">
+      <select id="sort-select">
+        <option value="createdAt">按添加时间</option>
+        <option value="title">按歌名</option>
+        <option value="artist">按歌手</option>
+        <option value="lastOpenedAt">按最近打开</option>
+      </select>
+      <div class="tag-bar" id="tag-bar"></div>
+    </div>
+    
+    <!-- 多选操作栏 -->
+    <div class="multi-select-bar" id="multi-select-bar">
+      <span class="ms-info" id="ms-info">已选 0 首</span>
+      <button onclick="LibraryModule.selectAll()">全选</button>
+      <button onclick="LibraryModule.deselectAll()">取消全选</button>
+      <button class="danger" onclick="LibraryModule.confirmBatchDelete()">🗑 删除选中</button>
+      <button onclick="LibraryModule.exitMultiSelect()">退出多选</button>
+    </div>
+    
+    <ul id="song-list"></ul>
+    
+    <div class="sidebar-footer">
+      <button onclick="LibraryModule.toggleMultiSelect()" id="multiselect-btn">☑ 多选</button>
+      <button onclick="BackupModule.backup()">💾 备份</button>
+      <button onclick="BackupModule.restore()">📂 恢复</button>
+    </div>
+  </aside>
+
+  <!-- 移动端侧栏遮罩：点击收起侧栏 -->
+  <div id="sidebar-backdrop" onclick="UIModule.applySidebarState(true)"></div>
+
+  <!-- ==================== 主区域 ==================== -->
+  <main id="main">
+    <div id="toolbar">
+      <button id="sidebar-toggle" class="tool-btn" onclick="UIModule.toggleSidebar()">☰</button>
+      
+      <!-- 导入操作组 -->
+      <div class="toolbar-group">
+        <button class="tool-btn" onclick="ImportModule.openFilePicker()" title="选择文件导入">📥 导入</button>
+        <button class="tool-btn" onclick="ImportModule.openFolderPicker()" title="选择文件夹导入（支持多子文件夹）">📁 文件夹</button>
+        <button class="tool-btn" onclick="ImportModule.appendToCurrent()" id="append-btn" style="display:none" title="追加页面到当前歌曲">➕ 追加</button>
+      </div>
+      
+      <div class="toolbar-group" id="song-title-bar">
+        <span class="title-text" id="current-title">未选择歌曲</span>
+        <span class="star-btn" id="current-star" style="cursor:pointer" onclick="LibraryModule.toggleFavoriteCurrent()">☆</span>
+      </div>
+      <div class="toolbar-group" id="key-capo-info">
+        <span id="key-info" style="display:none">Key: -</span>
+        <span id="capo-info" style="display:none">Capo: -</span>
+      </div>
+      <div class="toolbar-group">
+        <div class="btn-group" id="pages-count-group">
+          <button data-count="1" onclick="RenderModule.setPagesPerScreen(1)">1</button>
+          <button data-count="2" class="active" onclick="RenderModule.setPagesPerScreen(2)">2</button>
+          <button data-count="3" onclick="RenderModule.setPagesPerScreen(3)">3</button>
+          <button data-count="4" onclick="RenderModule.setPagesPerScreen(4)">4</button>
+          <button data-count="6" onclick="RenderModule.setPagesPerScreen(6)">6</button>
+        </div>
+      </div>
+      <div class="toolbar-group">
+        <button class="tool-btn" id="timer-btn" onclick="PagingModule.toggleTimedPaging()">⏱ 定时翻页</button>
+        <div class="timer-control" title="每隔多少秒翻到下一页（3–120 秒）">
+          <span>间隔</span>
+          <input type="number" id="timer-interval-input" min="3" max="120" step="1" value="15"
+                 onchange="PagingModule.setTimerInterval(this.value)">
+          <span>秒</span>
+        </div>
+      </div>
+      <div class="toolbar-group">
+        <button class="tool-btn" onclick="RenderModule.toggleFullscreen()">⛶ 全屏</button>
+      </div>
+      <div class="toolbar-group" id="theme-selector">
+        <button class="theme-btn active" data-theme="dark" title="暗夜" onclick="UIModule.setTheme('dark')"></button>
+        <button class="theme-btn" data-theme="green" title="护眼绿" onclick="UIModule.setTheme('green')"></button>
+        <button class="theme-btn" data-theme="parchment" title="羊皮纸" onclick="UIModule.setTheme('parchment')"></button>
+        <button class="theme-btn" data-theme="ocean" title="深海蓝" onclick="UIModule.setTheme('ocean')"></button>
+      </div>
+    </div>
+
+    <div id="display-area">
+      <div id="pages-container"></div>
+      <div id="empty-state">
+        <div class="icon">🎸</div>
+        <h2>欢迎使用吉他谱阅读器</h2>
+        <div class="drag-hint">
+          <p>将图片或PDF文件拖拽到此处<br/>或点击下方按钮导入</p>
+          <p style="font-size:12px;color:var(--text-dim);margin-top:8px">💡 提示：选择文件夹时可选择包含多个子文件夹的父目录，每个子文件夹会自动识别为一首歌</p>
+          <button class="btn-primary" onclick="ImportModule.openFilePicker()">📥 选择文件</button>
+          <button class="btn-primary" onclick="ImportModule.openFolderPicker()" style="margin-left:8px">📁 选择文件夹</button>
+        </div>
+      </div>
+      <div id="countdown-ring">
+        <svg viewBox="0 0 56 56">
+          <circle class="ring-bg" cx="28" cy="28" r="24"></circle>
+          <circle class="ring-fg" id="ring-fg" cx="28" cy="28" r="24" stroke-dasharray="150.8" stroke-dashoffset="0"></circle>
+        </svg>
+        <span id="countdown-text">0</span>
+      </div>
+    </div>
+
+    <div id="status-bar">
+      <button class="nav-btn" id="prev-song-btn" onclick="PagingModule.prevSong()">◀ 上一首</button>
+      <span class="page-info" id="page-info">未选择歌曲</span>
+      <div class="status-progress"><div class="status-progress-fill" id="status-progress-fill"></div></div>
+      <button class="nav-btn" id="next-song-btn" onclick="PagingModule.nextSong()">下一首 ▶</button>
+    </div>
+  </main>
+</div>
+
+<!-- ==================== 模态框 ==================== -->
+<div id="modal-overlay"><div id="modal"></div></div>
+
+<!-- ==================== 进度条 ==================== -->
+<div id="progress-overlay">
+  <div id="progress-box">
+    <p id="progress-title">处理中...</p>
+    <div class="progress-bar"><div class="progress-bar-fill" id="progress-fill"></div></div>
+    <p class="progress-text" id="progress-text">0 / 0</p>
+  </div>
+</div>
+
+<!-- ==================== Toast 容器 ==================== -->
+<div id="toast-container"></div>
+
+<!-- ==================== 隐藏文件输入 ==================== -->
+<input type="file" id="file-input" multiple accept="image/*,application/pdf" style="display:none">
+<input type="file" id="folder-input" webkitdirectory directory multiple style="display:none">
+<input type="file" id="restore-input" accept=".zip" style="display:none">
+<input type="file" id="append-input" multiple accept="image/*,application/pdf" style="display:none">
+
+<!-- ==================== CDN 依赖（SRI 校验 + 多镜像回退） ==================== -->
+<script>
+/* 三个镜像分发的是同一份文件，实测 sha384 完全一致，因此共用一份摘要。
+   某个镜像不可用（被拦截、超时、内容被篡改）时自动尝试下一个。 */
+window.__depsReady = (async function(){
+  // 允许外部注入依赖地址：离线使用、或自动化测试时指向本地副本，让加载结果可复现。
+  // 例：window.__DEPS_OVERRIDE__ = { pdf:'file:///.../pdf.min.js', pdfWorker:'file:///.../pdf.worker.min.js', jszip:'file:///.../jszip.min.js' }
+  const OVERRIDE = (typeof window !== 'undefined' && window.__DEPS_OVERRIDE__) || {};
+
+  const LIBS = [
+    {
+      key: 'pdf',
+      name: 'pdfjsLib',
+      ready: () => typeof pdfjsLib !== 'undefined',
+      integrity: 'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e',
+      urls: [
+        'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
+        'https://fastly.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
+        'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js'
+      ],
+      bases: [
+        'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/',
+        'https://fastly.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/',
+        'https://unpkg.com/pdfjs-dist@3.11.174/build/'
+      ]
+    },
+    {
+      key: 'jszip',
+      name: 'JSZip',
+      ready: () => typeof JSZip !== 'undefined',
+      integrity: 'sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG',
+      urls: [
+        'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',
+        'https://fastly.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',
+        'https://unpkg.com/jszip@3.10.1/dist/jszip.min.js'
+      ],
+      bases: ['', '', '']
+    }
+  ];
+
+  // 单次尝试的超时上限。CDN 被黑洞时请求会一直挂着不返回，
+  // 没有超时的话 __depsReady 永远不 resolve。
+  // 由于依赖加载已经不阻塞启动，这里可以给得宽松一些（慢网络也能等到）。
+  const MIRROR_TIMEOUT_MS = 12000;
+
+  function loadOne(url, integrity, timeoutMs){
+    return new Promise((resolve, reject)=>{
+      const s = document.createElement('script');
+      let done = false;
+      const finish = (fn, arg)=>{
+        if(done) return;
+        done = true;
+        clearTimeout(timer);
+        fn(arg);
+      };
+      const timer = setTimeout(()=>{
+        // 超时后摘掉标签并解绑回调，尽量让它之后不再执行，然后换下一个镜像
+        s.onload = null;
+        s.onerror = null;
+        s.remove();
+        finish(reject, new Error('加载超时(' + timeoutMs + 'ms)'));
+      }, timeoutMs);
+      s.src = url;
+      s.async = false;
+      // 注入本地 file:// 副本时不带 SRI：本地文件不需要完整性校验，带上反而会因协议差异失败
+      if(integrity && !/^file:/i.test(url)){ s.integrity = integrity; s.crossOrigin = 'anonymous'; }
+      s.onload = ()=>finish(resolve);
+      s.onerror = ()=>finish(reject, new Error('加载失败: ' + url));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function load(lib){
+    if(lib.ready()) return { ok:true, base: lib.bases[0] };
+
+    // 优先使用外部注入的地址
+    const forced = OVERRIDE[lib.key];
+    if(forced){
+      try{
+        await loadOne(forced, null, MIRROR_TIMEOUT_MS);
+      }catch(e){
+        console.warn('[依赖加载] 注入地址不可用：', forced, e.message);
+      }
+      return { ok: lib.ready(), base: '' };
+    }
+    for(let i=0; i<lib.urls.length; i++){
+      try{
+        await loadOne(lib.urls[i], lib.integrity, MIRROR_TIMEOUT_MS);
+        if(lib.ready()) return { ok:true, base: lib.bases[i] };
+      }catch(e){
+        console.warn('[依赖加载] 镜像不可用，尝试下一个：', lib.urls[i], e.message);
+      }
+    }
+    return { ok:false, base:'' };
+  }
+
+  const results = await Promise.all(LIBS.map(load));
+  const resolved = {
+    pdf: results[0].ok,
+    jszip: results[1].ok,
+    base: results[0].base || '',
+    worker: OVERRIDE.pdfWorker || ''      // 显式指定的 worker 地址优先
+  };
+  window.__depsResolved = resolved;       // 供运行期按需读取（不阻塞应用启动）
+  return resolved;
+})();
+</script>
+
+<script>
+"use strict";
+/* ============================================================
+ * 吉他谱弹唱阅读器 - 单文件应用
+ * 模块组织：Utils → DB → Import → Render → Paging → Library → Backup → UI → Shortcuts → Init
+ * ============================================================ */
+(function(){
+
+/* ==================== 全局状态 ==================== */
+const State = {
+  songs: [],
+  currentSong: null,
+  currentScreen: 0,
+  pagesPerScreen: 2,
+  sortBy: 'createdAt',
+  searchQuery: '',
+  activeTag: null,
+  sidebarCollapsed: false,
+  _sidebarWasOpen: false,      // 进全屏前侧栏是否展开，用于退出时还原
+  theme: 'dark',
+  multiSelectMode: false,      // 多选模式开关
+  selectedSongs: new Set(),    // 选中的歌曲ID集合
+  timedPaging: { active:false, paused:false, interval:15, remaining:15, rafId:null, lastTime:0 },
+  renderedSlots: [],
+  pdfDocCache: new Map(),
+  objectURLs: new Map(),
+  pageAspect: new Map(),   // type:fileId:pageIndex -> 宽高比，用于按页面比例排布
+  resizeTimer: null,
+  renderToken: 0,        // 每次重渲染自增，用于作废仍在飞行中的旧渲染任务
+  screenReady: true,     // 当前屏所有页面是否渲染完毕
+  hScrollable: false,    // 当前屏是否为"宽排 + 横向滚动"（此时横向滑动用来滚谱面而不是切屏）
+};
+
+/* ==================== 工具函数模块 ==================== */
+const Utils = {
+  toast(msg, type='info', duration=3000){
+    const c = document.getElementById('toast-container');
+    const el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.textContent = msg;
+    c.appendChild(el);
+    setTimeout(()=>{
+      el.style.animation = 'toastOut .3s ease forwards';
+      setTimeout(()=>el.remove(), 300);
+    }, duration);
+  },
+
+  debounce(fn, delay){
+    let t;
+    return function(...args){ clearTimeout(t); t = setTimeout(()=>fn.apply(this,args), delay); };
+  },
+
+  uuid(){
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c=>{
+      const r = Math.random()*16|0;
+      const v = c==='x' ? r : (r&0x3|0x8);
+      return v.toString(16);
+    });
+  },
+
+  // 自然排序比较（page2 排在 page10 之前）
+  naturalCompare(a, b){
+    const ax = [], bx = [];
+    a.replace(/(\d+)|(\D+)/g, (_, $1, $2) => { ax.push([$1||Infinity, $2||""]); });
+    b.replace(/(\d+)|(\D+)/g, (_, $1, $2) => { bx.push([$1||Infinity, $2||""]); });
+    while(ax.length && bx.length){
+      const an = ax.shift(), bn = bx.shift();
+      const nn = (an[0] - bn[0]) || an[1].localeCompare(bn[1]);
+      if(nn) return nn;
+    }
+    return ax.length - bx.length;
+  },
+
+  // 计算文件哈希（用于去重）
+  async computeHash(file){
+    try{
+      const buf = await file.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', buf);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b=>b.toString(16).padStart(2,'0')).join('');
+    }catch(e){
+      // 降级：用大小+修改时间作为简易哈希
+      return 'size_' + file.size + '_time_' + file.lastModified;
+    }
+  },
+
+  formatTime(ts){
+    if(!ts) return '从未';
+    const d = new Date(ts);
+    const now = Date.now();
+    const diff = now - ts;
+    if(diff < 60000) return '刚刚';
+    if(diff < 3600000) return Math.floor(diff/60000) + '分钟前';
+    if(diff < 86400000) return Math.floor(diff/3600000) + '小时前';
+    if(diff < 604800000) return Math.floor(diff/86400000) + '天前';
+    return d.toLocaleDateString('zh-CN');
+  },
+
+  isImage(file){
+    // 优先用 MIME 类型判断，兜底用扩展名判断（webkitdirectory 选择的文件 type 可能为空）
+    if(file.type && file.type.startsWith('image/')) return true;
+    return /\.(jpe?g|png|webp|gif|bmp|svg|tiff?|avif)$/i.test(file.name);
+  },
+  isPDF(file){
+    return file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+  },
+
+  // 统一转义（原先在 Import/Render/Library 三个模块里各抄了一份）
+  // 属性值场景一律用它；注意它不能用于拼接内联 onclick 里的 JS 字符串
+  escapeHtml(s){
+    if(s === null || s === undefined) return '';
+    return String(s)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      .replace(/'/g,'&#39;');
+  },
+
+  // 数值夹取（速度等参数统一走这里，避免各处边界不一致）
+  clamp(value, min, max){
+    const n = Number(value);
+    if(!isFinite(n)) return min;
+    return Math.min(max, Math.max(min, n));
+  },
+
+  // 用于拼接进内联 onclick 的 JS 字符串字面量。
+  // HTML 实体转义在这里没用（属性值会先被解码再交给 JS 解析），所以直接把非 id 字符剔掉。
+  // 正常 id 是 UUID，不受影响；即使 id 来自被篡改的备份文件也无法逃逸出字符串。
+  jsId(id){
+    return String(id == null ? '' : id).replace(/[^A-Za-z0-9_-]/g, '');
+  },
+};
+
+/* ==================== PDF 依赖的按需获取 ==================== */
+/* 【重要】绝不能在 App.init 里 await 依赖加载。
+   CDN 被黑洞时请求会长时间挂起，一旦把等待放在启动路径上，整个应用就再也初始化不了
+   —— 数据库没开、事件没绑、曲库为空，表现就是"网页卡死、点导入没任何反应"。
+   所以依赖改成按需获取：启动照常走完，真正要用到 PDF 能力时再等，而且自带超时上限。 */
+const PdfLib = {
+  DEFAULT_BASE: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/',
+  _configured: false,
+  _failedOnce: false,
+
+  /* 返回可用的 pdfjsLib；超时或最终失败返回 null（调用方需自行降级）。
+     这里采用"轮询等库出现"而不是"等 __depsReady 结算"：
+     镜像超时后迟到的脚本仍可能执行成功，轮询能第一时间抓住它，
+     不会出现"库其实已经到了、却因为我们提前放弃而误判不可用"。
+     一旦确认失败过，后续调用立即返回，避免每次导入都白等一遍。 */
+  async get(limitMs = 20000){
+    if(typeof pdfjsLib !== 'undefined'){
+      PdfLib._configure();
+      return pdfjsLib;
+    }
+    if(PdfLib._failedOnce) return null;
+
+    const deadline = Date.now() + limitMs;
+    while(typeof pdfjsLib === 'undefined'){
+      if(Date.now() >= deadline){
+        PdfLib._failedOnce = true;
+        return null;
+      }
+      await new Promise(r=>setTimeout(r, 120));
+    }
+    PdfLib._configure();
+    return pdfjsLib;
+  },
+
+  _configure(){
+    if(PdfLib._configured || typeof pdfjsLib === 'undefined') return;
+    const deps = window.__depsResolved || {};
+    const base = deps.base || PdfLib.DEFAULT_BASE;
+    try{
+      pdfjsLib.GlobalWorkerOptions.workerSrc = deps.worker || (base + 'pdf.worker.min.js');
+      PdfLib._configured = true;
+    }catch(e){ /* 配置失败不致命，pdf.js 会自行兜底 */ }
+  },
+};
+
+/* ==================== 数据库模块 (IndexedDB) ==================== */
+const DB = {
+  db: null,
+
+  async init(){
+    return new Promise((resolve, reject)=>{
+      const req = indexedDB.open('GuitarSheetReader', 1);
+      req.onupgradeneeded = (e)=>{
+        const db = e.target.result;
+        if(!db.objectStoreNames.contains('songs')){
+          const store = db.createObjectStore('songs', { keyPath:'id' });
+          store.createIndex('title', 'title', { unique:false });
+          store.createIndex('createdAt', 'createdAt', { unique:false });
+          store.createIndex('lastOpenedAt', 'lastOpenedAt', { unique:false });
+        }
+        if(!db.objectStoreNames.contains('files')){
+          const store = db.createObjectStore('files', { keyPath:'fileId' });
+          store.createIndex('hash', 'hash', { unique:false });
+          store.createIndex('songId', 'songId', { unique:false });
+        }
+      };
+      req.onsuccess = (e)=>{
+        DB.db = e.target.result;
+        // 其他标签页请求升级数据库版本时主动让出连接，避免互相卡死
+        DB.db.onversionchange = ()=>{
+          try{ DB.db.close(); }catch(err){}
+          DB.db = null;
+          Utils.toast('数据库已在其他标签页被升级，请刷新本页','warning',6000);
+        };
+        resolve();
+      };
+      req.onerror = (e)=>{ reject(e.target.error); };
+      // 本页占用旧版本连接导致其他标签页升级不了时触发
+      req.onblocked = ()=>{
+        reject(new Error('数据库被其他标签页占用，请关闭其他标签页后重试'));
+      };
+    });
+  },
+
+  _tx(store, mode='readonly'){
+    return DB.db.transaction(store, mode).objectStore(store);
+  },
+
+  async getAllSongs(){
+    return new Promise((resolve, reject)=>{
+      const req = DB._tx('songs').getAll();
+      req.onsuccess = ()=>resolve(req.result || []);
+      req.onerror = ()=>reject(req.error);
+    });
+  },
+
+  async getSong(id){
+    return new Promise((resolve, reject)=>{
+      const req = DB._tx('songs').get(id);
+      req.onsuccess = ()=>resolve(req.result);
+      req.onerror = ()=>reject(req.error);
+    });
+  },
+
+  async saveSong(song){
+    return new Promise((resolve, reject)=>{
+      const req = DB._tx('songs','readwrite').put(song);
+      req.onsuccess = ()=>resolve();
+      req.onerror = ()=>reject(req.error);
+    });
+  },
+
+  async deleteSong(id){
+    return new Promise((resolve, reject)=>{
+      const req = DB._tx('songs','readwrite').delete(id);
+      req.onsuccess = ()=>resolve();
+      req.onerror = ()=>reject(req.error);
+    });
+  },
+
+  async saveFile(fileRecord){
+    return new Promise((resolve, reject)=>{
+      const req = DB._tx('files','readwrite').put(fileRecord);
+      req.onsuccess = ()=>resolve();
+      req.onerror = ()=>reject(req.error);
+    });
+  },
+
+  async getFile(fileId){
+    return new Promise((resolve, reject)=>{
+      const req = DB._tx('files').get(fileId);
+      req.onsuccess = ()=>resolve(req.result);
+      req.onerror = ()=>reject(req.error);
+    });
+  },
+
+  async getFileByHash(hash){
+    return new Promise((resolve, reject)=>{
+      const idx = DB._tx('files').index('hash');
+      const req = idx.get(hash);
+      req.onsuccess = ()=>resolve(req.result);
+      req.onerror = ()=>reject(req.error);
+    });
+  },
+
+  async getAllFiles(){
+    return new Promise((resolve, reject)=>{
+      const req = DB._tx('files').getAll();
+      req.onsuccess = ()=>resolve(req.result || []);
+      req.onerror = ()=>reject(req.error);
+    });
+  },
+
+  async deleteFile(fileId){
+    return new Promise((resolve, reject)=>{
+      const req = DB._tx('files','readwrite').delete(fileId);
+      req.onsuccess = ()=>resolve();
+      req.onerror = ()=>reject(req.error);
+    });
+  },
+
+  // 按 songId 索引取文件记录（仅用于兜住旧数据残留，判断真实归属请用 refsOf）
+  async getFilesBySongId(songId){
+    return new Promise((resolve, reject)=>{
+      const idx = DB._tx('files').index('songId');
+      const req = idx.getAll(IDBKeyRange.only(songId));
+      req.onsuccess = ()=>resolve(req.result || []);
+      req.onerror = ()=>reject(req.error);
+    });
+  },
+
+  // 读取文件记录的真实引用者列表，兼容只有 songId 的旧记录
+  refsOf(record){
+    if(!record) return [];
+    if(Array.isArray(record.refSongIds) && record.refSongIds.length > 0) return record.refSongIds.slice();
+    return record.songId ? [record.songId] : [];
+  },
+
+  /** 引用计数式删除歌曲文件。
+   *  【历史 bug】导入时按 hash 去重会复用其他歌曲的 fileId，旧实现却直接按 songId 删文件，
+   *  于是删掉 A 歌会把 B 歌仍在复用的文件一起删掉，B 歌页面变成"文件不存在"。
+   *  这里以"全库歌曲的 pages"为唯一事实来源统计真实引用关系：即使记录里没有 refSongIds
+   *  （旧数据），也不会误删其他歌曲仍在使用的文件。 */
+  async deleteFilesBySongId(songId){
+    // 不在这里因 song 不存在而提前返回：万一调用方先删了歌曲记录，
+    // 仍然要靠 songId 索引把文件清理掉，否则 blob 会永久泄漏。
+    const song = await DB.getSong(songId);
+
+    // 统计 fileId -> 引用它的歌曲集合
+    const allSongs = await DB.getAllSongs();
+    const refMap = new Map();
+    for(const s of allSongs){
+      for(const p of (s.pages || [])){
+        if(!refMap.has(p.fileId)) refMap.set(p.fileId, new Set());
+        refMap.get(p.fileId).add(s.id);
+      }
+    }
+
+    // 候选 = 本歌页面引用到的文件 + 索引里记在本歌名下的文件（后者用于顺带清理孤儿 blob）
+    const candidates = new Set(song ? (song.pages || []).map(p => p.fileId) : []);
+    const owned = await DB.getFilesBySongId(songId);
+    for(const f of owned) candidates.add(f.fileId);
+
+    for(const fileId of candidates){
+      const record = await DB.getFile(fileId);
+      if(!record) continue;
+
+      // 去掉本歌之后还有谁在用（正常调用顺序下 song 尚未从 songs 表删除，会包含它自己）
+      const refs = Array.from(refMap.get(fileId) || []).filter(id => id !== songId);
+
+      if(refs.length === 0){
+        // 已无任何歌曲引用，真正删除 blob
+        await DB.deleteFile(fileId);
+      } else {
+        // 仍被其他歌曲引用：只摘引用，并把 songId 索引改指向一个仍然存在的歌曲，顺带自愈旧数据
+        record.refSongIds = refs;
+        record.songId = refs[0];
+        await DB.saveFile(record);
+      }
+    }
+  },
+
+  async clearAll(){
+    return new Promise((resolve, reject)=>{
+      const tx = DB.db.transaction(['songs','files'],'readwrite');
+      tx.objectStore('songs').clear();
+      tx.objectStore('files').clear();
+      tx.oncomplete = ()=>resolve();
+      tx.onerror = ()=>reject(tx.error);
+    });
+  },
+};
+
+/* ==================== 导入模块 ==================== */
+const ImportModule = {
+  pendingGroups: [],
+  lastGroupedByFolder: false,   // 上一次分组是否基于文件夹（决定确认弹窗的文案）
+
+  openFilePicker(){
+    document.getElementById('file-input').value = '';
+    document.getElementById('file-input').click();
+  },
+
+  openFolderPicker(){
+    document.getElementById('folder-input').value = '';
+    document.getElementById('folder-input').click();
+  },
+
+  appendToCurrent(){
+    if(!State.currentSong){ Utils.toast('请先选择一首歌曲','warning'); return; }
+    document.getElementById('append-input').value = '';
+    document.getElementById('append-input').click();
+  },
+
+  // 【修复3】文件选择：使用 webkitRelativePath 保留文件夹结构
+  async handleFileInput(event){
+    const files = Array.from(event.target.files);
+    if(files.length === 0) return;
+    // 优先使用 webkitRelativePath（文件夹选择时包含路径），否则用文件名
+    const fileList = files.map(f=>({
+      file: f,
+      relativePath: f.webkitRelativePath || f.name
+    }));
+    await ImportModule.processFiles(fileList);
+  },
+
+  async handleDrop(event){
+    event.preventDefault();
+    document.getElementById('display-area').classList.remove('drag-over');
+    const emptyState = document.getElementById('empty-state');
+    if(emptyState) emptyState.classList.remove('drag-over');
+    const items = event.dataTransfer.items;
+    const fileList = [];
+
+    if(items && items.length > 0 && items[0].webkitGetAsEntry){
+      const entries = [];
+      for(let i=0; i<items.length; i++){
+        const entry = items[i].webkitGetAsEntry();
+        if(entry) entries.push(entry);
+      }
+      for(const entry of entries){
+        await ImportModule.traverseEntry(entry, '', fileList);
+      }
+    } else {
+      for(let i=0; i<event.dataTransfer.files.length; i++){
+        const f = event.dataTransfer.files[i];
+        fileList.push({file:f, relativePath:f.name});
+      }
+    }
+
+    if(fileList.length === 0) return;
+    await ImportModule.processFiles(fileList);
+  },
+
+  // 递归遍历 FileSystemEntry（拖拽文件夹时使用）
+  async traverseEntry(entry, path, fileList){
+    if(entry.isFile){
+      const file = await new Promise((resolve,reject)=>entry.file(resolve,reject));
+      fileList.push({file, relativePath: path + entry.name});
+    } else if(entry.isDirectory){
+      const reader = entry.createReader();
+      const allEntries = [];
+      const readBatch = ()=>{
+        return new Promise((resolve,reject)=>{
+          reader.readEntries((results)=>{
+            if(results.length === 0) resolve();
+            else { allEntries.push(...results); readBatch(); }
+          }, reject);
+        });
+      };
+      await readBatch();
+      for(const child of allEntries){
+        await ImportModule.traverseEntry(child, path + entry.name + '/', fileList);
+      }
+    }
+  },
+
+  async processFiles(fileList){
+    const supported = fileList.filter(({file})=>Utils.isImage(file) || Utils.isPDF(file));
+    if(supported.length === 0){
+      Utils.toast('未检测到支持的文件（图片或PDF）','warning');
+      return;
+    }
+
+    const groups = ImportModule.groupFiles(supported);
+    if(groups.length === 0){
+      Utils.toast('未能从文件中识别出歌曲','warning');
+      return;
+    }
+
+    ImportModule.pendingGroups = groups;
+    ImportModule.showImportConfirm(groups);
+  },
+
+  // 【修复1】智能分组：直接按子文件夹分组
+  // 简单逻辑：找到公共父目录，其下的每个直接子文件夹 = 一首歌
+  // 空文件夹也会被统计（只要文件夹存在就创建一首歌）
+  groupFiles(fileList){
+    // 第一步：解析所有路径
+    const parsed = fileList.map(({file, relativePath}) => {
+      const parts = relativePath.split(/[\/\\]/).filter(p => p.length > 0);
+      return {file, relativePath, parts};
+    });
+    
+    const withDirs = parsed.filter(p => p.parts.length > 1);
+    // 记录分组依据：散图导入时说"共识别到 N 个文件夹"是错的
+    ImportModule.lastGroupedByFolder = withDirs.length > 0;
+    if(withDirs.length === 0){
+      // 全是散图，合并为一首新歌
+      return ImportModule.createGroupsFromFiles('新歌', parsed);
+    }
+    
+    // 第二步：计算公共前缀深度（所有路径共享的目录层级）
+    let prefixDepth = 0;
+    const minLen = Math.min(...withDirs.map(p => p.parts.length));
+    for(let level = 0; level < minLen - 1; level++){
+      const firstDir = withDirs[0].parts[level];
+      const allSame = withDirs.every(p => p.parts[level] === firstDir);
+      if(allSame) prefixDepth = level + 1;
+      else break;
+    }
+    
+    // 第三步：按公共前缀的下一级目录分组
+    // 每个不同的子文件夹 = 一首歌
+    const dirMap = new Map();
+    for(const {file, relativePath, parts} of parsed){
+      if(parts.length > prefixDepth + 1){
+        // 有子目录：取 prefixDepth 层级的目录名作为分组 key
+        const dir = parts[prefixDepth];
+        if(!dirMap.has(dir)) dirMap.set(dir, []);
+        dirMap.get(dir).push({file, relativePath});
+      } else {
+        // 散图（在公共前缀目录下但没有子文件夹）
+        if(!dirMap.has('')) dirMap.set('', []);
+        dirMap.get('').push({file, relativePath});
+      }
+    }
+
+    const allGroups = [];
+    const subDirs = Array.from(dirMap.keys()).filter(d => d !== '');
+    
+    // 每个子文件夹 = 一首歌
+    for(const dir of subDirs){
+      allGroups.push(...ImportModule.createGroupsFromFiles(dir, dirMap.get(dir)));
+    }
+    // 根目录散图（如果有）
+    if(dirMap.has('')){
+      allGroups.push(...ImportModule.createGroupsFromFiles('未分组图片', dirMap.get('')));
+    }
+    // 如果没有任何分组（全是散图），合并为一首新歌
+    if(allGroups.length === 0){
+      allGroups.push(...ImportModule.createGroupsFromFiles('新歌', parsed));
+    }
+
+    return allGroups;
+  },
+
+  // 从文件列表创建歌曲分组
+  // 策略：每个文件夹 = 一首歌（即使文件夹为空也创建，保证数量与文件夹数一致）
+  // 文件夹内的图片和 PDF 合并为同一首歌的页面
+  createGroupsFromFiles(defaultName, files){
+    const pdfs = files.filter(f=>Utils.isPDF(f.file));
+    const images = files.filter(f=>Utils.isImage(f.file));
+    
+    // 图片按文件名自然排序
+    images.sort((a,b)=>Utils.naturalCompare(a.file.name, b.file.name));
+    
+    // 合并图片和 PDF 作为同一首歌的页面
+    const allFiles = [];
+    for(const img of images){
+      allFiles.push({file:img.file, type:'image'});
+    }
+    for(const pdf of pdfs){
+      allFiles.push({file:pdf.file, type:'pdf'});
+    }
+    
+    // 即使文件夹为空（没有图片或PDF），也创建一个分组
+    // 这样空文件夹也会被统计，数量与文件夹数一致
+    const groups = [{
+      title: defaultName,
+      artist: '',
+      tags: [],
+      files: allFiles,
+      pageCount: allFiles.length,
+    }];
+
+    return groups;
+  },
+
+  showImportConfirm(groups){
+    // 统计有效歌曲数（有文件的分组）和空文件夹数
+    const validCount = groups.filter(g => g.pageCount > 0).length;
+    const emptyCount = groups.length - validCount;
+    const unit = ImportModule.lastGroupedByFolder ? '个文件夹' : '首歌曲';
+    let subtitle = `共识别到 ${groups.length} ${unit}`;
+    if(emptyCount > 0){
+      subtitle += `（其中 ${validCount} 首有内容，${emptyCount} 个空文件夹将被跳过）`;
+    } else {
+      subtitle += `，均可编辑歌名/歌手/标签后确认导入`;
+    }
+    
+    const html = `
+      <h2>确认导入</h2>
+      <p class="modal-subtitle">${subtitle}</p>
+      <div class="import-list">
+        ${groups.map((g, i)=>`
+          <div class="import-item">
+            <div class="import-item-header">
+              <strong>第 ${i+1} 首${g.pageCount === 0 ? '（空文件夹）' : ''}</strong>
+              <span class="page-count">${g.pageCount} 页</span>
+              <span class="dup-warning" style="display:none">⚠ 疑似重复</span>
+            </div>
+            <div class="form-row">
+              <div class="form-group" style="flex:2">
+                <input type="text" class="imp-title" placeholder="歌名" value="${Utils.escapeHtml(g.title)}">
+              </div>
+              <div class="form-group" style="flex:1">
+                <input type="text" class="imp-artist" placeholder="歌手" value="${Utils.escapeHtml(g.artist)}">
+              </div>
+            </div>
+            <div class="form-group">
+              <input type="text" class="imp-tags" placeholder="标签（逗号分隔）" value="${Utils.escapeHtml((g.tags || []).join(', '))}">
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="UIModule.closeModal()">取消</button>
+        <button class="btn-primary" onclick="ImportModule.confirmImport()">确认导入</button>
+      </div>
+    `;
+    UIModule.showModal(html);
+  },
+
+  // 确认导入：保存文件和歌曲到 IndexedDB
+  async confirmImport(){
+    const items = document.querySelectorAll('.import-item');
+    let groups = ImportModule.pendingGroups;
+    UIModule.closeModal();
+    UIModule.showProgress('正在导入...');
+
+    // PDF 能力预检：拿不到 pdf.js 时不要把 PDF 当成"1 页"塞进曲库，
+    // 那会写入错误的页数（等于坏数据）。宁可明确跳过并告知用户。
+    if(groups.some(g => (g.files||[]).some(f => f.type === 'pdf'))){
+      UIModule.updateProgressTitle('正在准备 PDF 组件...');
+      const lib = await PdfLib.get(15000);
+      if(!lib){
+        const before = groups.reduce((s,g)=>s+(g.files||[]).length, 0);
+        groups = groups.map(g => ({ ...g, files: (g.files||[]).filter(f => f.type !== 'pdf') }));
+        const after = groups.reduce((s,g)=>s+(g.files||[]).length, 0);
+        Utils.toast(`PDF 组件不可用，已跳过 ${before - after} 个 PDF 文件；网络恢复后重新导入即可`,'warning',7000);
+      }
+      UIModule.updateProgressTitle('正在导入...');
+    }
+
+    let totalFiles = groups.reduce((s,g)=>s+g.files.length, 0);
+    let processed = 0;
+    let importedSongs = 0;
+    let skippedDup = 0;
+    let failedGroups = 0;
+
+    try{
+      for(let gi=0; gi<groups.length; gi++){
+        const group = groups[gi];
+        // 从模态框获取用户编辑的标题/歌手/标签，如果获取失败则用默认值
+        let title = group.title || '未命名';
+        let artist = group.artist || '';
+        let tags = group.tags || [];
+        try{
+          const item = items[gi];
+          if(item){
+            title = item.querySelector('.imp-title')?.value.trim() || title;
+            artist = item.querySelector('.imp-artist')?.value.trim() || '';
+            const tagsStr = item.querySelector('.imp-tags')?.value.trim() || '';
+            tags = tagsStr ? tagsStr.split(/[,，]/).map(t=>t.trim()).filter(Boolean) : [];
+          }
+        }catch(e){
+          console.warn('读取导入项UI失败，使用默认值:', e);
+        }
+
+        const songId = Utils.uuid();
+        const pages = [];
+        const batchSize = 5;
+
+        try{
+          for(let fi=0; fi<group.files.length; fi++){
+            const {file, type} = group.files[fi];
+            const hash = await Utils.computeHash(file);
+
+            // 检查重复：如果文件已存在，复用其 fileId（而非跳过）
+            const existing = await DB.getFileByHash(hash);
+            if(existing){
+              skippedDup++;
+              // 关键：把当前歌曲登记为共同引用者。
+              // 共享文件的记录只记了最早导入那首歌的 songId，不补引用的话，
+              // 删除任一引用歌曲时会把其他歌仍在用的文件一起删掉。
+              const refs = DB.refsOf(existing);
+              if(!refs.includes(songId)){
+                refs.push(songId);
+                existing.refSongIds = refs;
+                await DB.saveFile(existing);
+              }
+              // 复用已有文件的 fileId，仍然添加为页面
+              if(type === 'image'){
+                pages.push({type:'image', fileId:existing.fileId});
+              } else if(type === 'pdf'){
+                const pageCount = await ImportModule.getPdfPageCount(file);
+                for(let p=0; p<pageCount; p++){
+                  pages.push({type:'pdf', fileId:existing.fileId, pageIndex:p});
+                }
+              }
+              processed++;
+              UIModule.updateProgress(processed, totalFiles);
+              continue;
+            }
+
+            const fileId = Utils.uuid();
+            if(type === 'image'){
+              await DB.saveFile({fileId, songId, refSongIds:[songId], name:file.name, mimeType:file.type, blob:file, size:file.size, hash});
+              pages.push({type:'image', fileId});
+            } else if(type === 'pdf'){
+              await DB.saveFile({fileId, songId, refSongIds:[songId], name:file.name, mimeType:'application/pdf', blob:file, size:file.size, hash});
+              const pageCount = await ImportModule.getPdfPageCount(file);
+              for(let p=0; p<pageCount; p++){
+                pages.push({type:'pdf', fileId, pageIndex:p});
+              }
+            }
+
+            processed++;
+            UIModule.updateProgress(processed, totalFiles);
+            if(fi % batchSize === 0) await new Promise(r=>setTimeout(r, 0));
+          }
+
+          // 只要分组有文件就创建歌曲（即使全部是重复文件，也复用已有文件创建歌曲）
+          if(pages.length > 0){
+            const song = {
+              id: songId, title, artist, tags,
+              key:'', capo:0, note:'',
+              favorite:false,
+              createdAt:Date.now(), lastOpenedAt:0,
+              pages,
+            };
+            await DB.saveSong(song);
+            importedSongs++;
+          } else {
+            // 空文件夹：不计入实际导入数，但也不算失败
+            console.warn('跳过空文件夹:', title);
+          }
+        }catch(groupErr){
+          console.error('分组导入失败:', group.title, groupErr);
+          failedGroups++;
+          // 继续处理下一个分组，不中断整体导入
+        }
+      }
+
+      UIModule.hideProgress();
+      let msg;
+      if(importedSongs > 0){
+        msg = `成功导入 ${importedSongs} 首歌曲`;
+      } else {
+        msg = '没有导入任何内容';
+      }
+      if(skippedDup > 0) msg += `（其中 ${skippedDup} 个文件复用了已有数据）`;
+      if(failedGroups > 0) msg += `（${failedGroups} 首导入失败）`;
+      // 一首都没导入时不该用"成功"的语气
+      Utils.toast(msg, importedSongs > 0 ? 'success' : 'warning', importedSongs > 0 ? 3000 : 6000);
+
+      ImportModule.pendingGroups = [];
+      await LibraryModule.refresh();
+    }catch(err){
+      UIModule.hideProgress();
+      if(err && err.name === 'QuotaExceededError'){
+        Utils.toast('存储空间不足，请清理或导出备份后重试','error',5000);
+      } else {
+        Utils.toast('导入失败：' + (err.message||err),'error',5000);
+      }
+      console.error(err);
+    }
+  },
+
+  // 只为读取页数，用完必须 destroy，否则每导入一个 PDF 就泄漏一个 pdf.js 文档与 worker
+  async getPdfPageCount(file){
+    const lib = await PdfLib.get();          // 按需等待依赖，自带超时
+    if(!lib) return 1;
+    let pdf = null;
+    try{
+      const buf = await file.arrayBuffer();
+      pdf = await lib.getDocument({data: buf}).promise;
+      return pdf.numPages;
+    }catch(e){
+      console.error('PDF页数获取失败:', e);
+      return 1;
+    }finally{
+      if(pdf){ try{ await pdf.destroy(); }catch(e){} }
+    }
+  },
+
+  // 追加页面到当前歌曲
+  async handleAppend(event){
+    const files = Array.from(event.target.files);
+    if(files.length === 0) return;
+    if(!State.currentSong) return;
+
+    // PDF 能力预检：组件不可用时不要把 PDF 当成"1 页"追加进去
+    let usableFiles = files;
+    if(files.some(f => Utils.isPDF(f))){
+      const lib = await PdfLib.get(15000);
+      if(!lib){
+        usableFiles = files.filter(f => !Utils.isPDF(f));
+        const skipped = files.length - usableFiles.length;
+        if(usableFiles.length === 0){
+          Utils.toast('PDF 组件不可用，无法追加 PDF（网络恢复后重试）','warning',7000);
+          return;
+        }
+        Utils.toast(`PDF 组件不可用，已跳过 ${skipped} 个 PDF 文件`,'warning',7000);
+      }
+    }
+
+    UIModule.showProgress('正在追加...');
+    const song = State.currentSong;
+    let processed = 0;
+    const total = usableFiles.length;
+
+    try{
+      for(const file of usableFiles){
+        if(!Utils.isImage(file) && !Utils.isPDF(file)){
+          processed++;
+          continue;
+        }
+
+        const hash = await Utils.computeHash(file);
+        const existing = await DB.getFileByHash(hash);
+        const fileId = existing ? existing.fileId : Utils.uuid();
+
+        if(existing){
+          // 复用别人的文件时同样要登记引用，否则删除时会把共享文件误删
+          const refs = DB.refsOf(existing);
+          if(!refs.includes(song.id)){
+            refs.push(song.id);
+            existing.refSongIds = refs;
+            await DB.saveFile(existing);
+          }
+        }
+
+        if(Utils.isImage(file)){
+          if(!existing){
+            await DB.saveFile({fileId, songId:song.id, refSongIds:[song.id], name:file.name, mimeType:file.type, blob:file, size:file.size, hash});
+          }
+          song.pages.push({type:'image', fileId});
+        } else if(Utils.isPDF(file)){
+          if(!existing){
+            await DB.saveFile({fileId, songId:song.id, refSongIds:[song.id], name:file.name, mimeType:'application/pdf', blob:file, size:file.size, hash});
+          }
+          const pageCount = await ImportModule.getPdfPageCount(file);
+          for(let p=0; p<pageCount; p++){
+            song.pages.push({type:'pdf', fileId, pageIndex:p});
+          }
+        }
+
+        processed++;
+        UIModule.updateProgress(processed, total);
+        if(processed % 5 === 0) await new Promise(r=>setTimeout(r,0));
+      }
+
+      await DB.saveSong(song);
+      UIModule.hideProgress();
+      await LibraryModule.refresh();
+      // refresh 把 State.songs 换成了新对象，这里同步一次当前歌曲，避免两份数据不一致
+      const fresh = await DB.getSong(song.id);
+      if(fresh) State.currentSong = fresh;
+      State.currentScreen = Math.max(0, Math.floor((song.pages.length - 1) / State.pagesPerScreen));
+      await RenderModule.renderScreen();
+      Utils.toast(`已追加 ${usableFiles.length} 个文件到「${song.title}」`,'success');
+    }catch(err){
+      UIModule.hideProgress();
+      Utils.toast('追加失败：'+(err.message||err),'error');
+    }
+  },
+};
+
+/* ==================== 渲染模块 (显示引擎) ==================== */
+const RenderModule = {
+
+  calculateLayout(pageCount, vw, vh){
+    const ratio = vw / vh;
+    let rows, cols;
+    switch(pageCount){
+      case 1: rows=1; cols=1; break;
+      case 2:
+        if(ratio > 1.2){ rows=1; cols=2; } else { rows=2; cols=1; }
+        break;
+      case 3:
+        if(ratio > 1.8){ rows=1; cols=3; }
+        else if(ratio > 0.8){ rows=1; cols=3; }
+        else { rows=3; cols=1; }
+        break;
+      case 4:
+        // 4 页固定横向单排。宽度放不下时不再折成四宫格，
+        // 改为保持页面尺寸并由容器横向滚动（见 renderScreen 里的 hscroll 分支）。
+        rows=1; cols=4;
+        break;
+      case 6:
+        if(ratio > 1.5){ rows=2; cols=3; }
+        else { rows=3; cols=2; }
+        break;
+      default: rows=1; cols=pageCount;
+    }
+    return {rows, cols};
+  },
+
+  /* 渲染当前屏。
+     opts.preserveScroll = true 时保留滚动位置（窗口缩放、缩放倍率变化用），默认回到屏首。
+     本函数会等本屏所有页面真正渲染完成才 resolve —— 自动滚动靠 scrollHeight 判断"是否到底"，
+     页面尚未撑开高度时会被误判成"已到底"从而连续跳页。 */
+  async renderScreen(opts){
+    const preserveScroll = !!(opts && opts.preserveScroll);
+    const token = ++State.renderToken;        // 作废仍在飞行中的旧渲染任务
+    const container = document.getElementById('pages-container');
+    const prevScroll = container.scrollTop;
+    State.screenReady = false;
+    State.hScrollable = false;
+
+    // 同屏页数受当前谱子总页数限制
+    RenderModule.updatePagesCountButtons();
+
+    container.innerHTML = '';
+    State.renderedSlots = [];
+
+    if(!State.currentSong || State.currentSong.pages.length === 0){
+      document.getElementById('empty-state').style.display = State.songs.length === 0 ? 'flex' : 'none';
+      State.screenReady = true;
+      UIModule.updateStatusBar();
+      return;
+    }
+    document.getElementById('empty-state').style.display = 'none';
+
+    const pages = State.currentSong.pages;
+    const startIdx = State.currentScreen * State.pagesPerScreen;
+    const screenPages = pages.slice(startIdx, startIdx + State.pagesPerScreen);
+
+    if(screenPages.length === 0){ State.screenReady = true; return; }
+
+    const GAP = 2;                 // 与 CSS 的 gap 保持一致
+    let slotSizes = null;          // 每页的实际显示尺寸
+
+    {
+      /* 先取本屏每页的宽高比，按"等比放进各自格子"算出实际显示尺寸，
+         再让它们紧挨着整体居中。旧实现用 repeat(cols,1fr) 把每页撑成等宽列，
+         纵向页面横向填不满列宽，两页之间就会空出一大块。 */
+      const n = State.pagesPerScreen;
+      const cs = getComputedStyle(container);
+      const availW = Math.max(1, container.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
+      const availH = Math.max(1, container.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom));
+      const {rows, cols} = RenderModule.calculateLayout(n, availW, availH);
+
+      const aspects = await Promise.all(screenPages.map(p => RenderModule.getPageAspect(p)));
+      if(token !== State.renderToken) return;   // 量比例的期间又切屏了，交给新那一次收尾
+
+      // 宽排：单行且列数 >= 4。此时页面按"高度铺满"定尺寸，宽度不够就横向滚动，
+      // 不再为了塞进屏幕把谱面缩小（4 页被压成一排小图很难看）。
+      const wide = rows === 1 && cols >= 4;
+      let overflow = false;
+
+      if(wide){
+        // 预留一点高度给横向滚动条，避免页面底部被裁掉
+        const usableH = Math.max(1, availH - 12);
+        slotSizes = aspects.map(a=>({
+          w: Math.max(1, Math.round(usableH * a)),
+          h: Math.max(1, Math.round(usableH)),
+        }));
+        const totalW = slotSizes.reduce((s,x)=>s+x.w, 0) + GAP * (slotSizes.length - 1);
+        overflow = totalW > availW;
+      } else {
+        const cellW = Math.max(1, (availW - GAP * (cols - 1)) / cols);
+        const cellH = Math.max(1, (availH - GAP * (rows - 1)) / rows);
+        slotSizes = aspects.map(a=>{
+          const h = Math.min(cellH, cellW / a);
+          return { w: Math.max(1, Math.round(h * a)), h: Math.max(1, Math.round(h)) };
+        });
+      }
+
+      // 溢出时用 start 对齐：居中会让左半部分滚不到
+      State.hScrollable = overflow;
+      container.className = 'fit-boxes' + (overflow ? ' hscroll' : '');
+      container.style.justifyContent = overflow ? 'start' : 'center';
+      container.style.gridTemplateRows = `repeat(${rows}, auto)`;
+      container.style.gridTemplateColumns = `repeat(${cols}, auto)`;
+    }
+
+    // 创建页面槽位
+    const tasks = [];
+    for(let i=0; i<screenPages.length; i++){
+      const pageRef = screenPages[i];
+      const slot = document.createElement('div');
+      slot.className = 'page-slot';
+      slot.dataset.pageIndex = startIdx + i;
+      if(slotSizes){
+        slot.style.width = slotSizes[i].w + 'px';
+        slot.style.height = slotSizes[i].h + 'px';
+      }
+      container.appendChild(slot);
+      State.renderedSlots.push(slot);
+
+      // 异步渲染页面内容，同时收集任务以便等待全部完成
+      tasks.push(
+        RenderModule.renderPage(pageRef, slot, token).catch(err=>{
+          // 只给仍然有效、且还挂在文档里的槽位写错误提示
+          if(token !== State.renderToken || !slot.isConnected) return;
+          slot.innerHTML = `<div class="page-error">⚠ ${Utils.escapeHtml(err.message||'渲染失败')}</div>`;
+        })
+      );
+    }
+
+    // 预加载下一屏的 PDF
+    const nextStart = startIdx + State.pagesPerScreen;
+    if(nextStart < pages.length){
+      const nextPages = pages.slice(nextStart, nextStart + State.pagesPerScreen);
+      for(const np of nextPages){
+        if(np.type === 'pdf'){
+          RenderModule.ensurePdfLoaded(np.fileId).catch(()=>{});
+        }
+      }
+    }
+
+    UIModule.updateStatusBar();
+
+    await Promise.all(tasks);
+    if(token !== State.renderToken) return;   // 期间又触发了新渲染，收尾交给新那一次
+
+    State.screenReady = true;
+    container.scrollTop = preserveScroll ? prevScroll : 0;
+  },
+
+  async renderPage(pageRef, slot, token){
+    if(pageRef.type === 'image'){
+      await RenderModule.renderImagePage(pageRef, slot, token);
+    } else if(pageRef.type === 'pdf'){
+      await RenderModule.renderPDFPage(pageRef, slot, token);
+    }
+  },
+
+  // 取图片的 objectURL（带缓存，统一释放见 cleanupAllResources）
+  async ensureObjectURL(fileId){
+    let url = State.objectURLs.get(fileId);
+    if(!url){
+      const fileRecord = await DB.getFile(fileId);
+      if(!fileRecord) throw new Error('文件不存在');
+      url = URL.createObjectURL(fileRecord.blob);
+      State.objectURLs.set(fileId, url);
+    }
+    return url;
+  },
+
+  /* 取某一页的宽高比（w/h）。已知的会缓存，避免每次重排都重新解码。
+     拿不到时退回 A4 纵向比例，至少不会把布局搞坏。 */
+  async getPageAspect(pageRef){
+    const key = pageRef.type + ':' + pageRef.fileId + ':' + (pageRef.pageIndex || 0);
+    const cached = State.pageAspect.get(key);
+    if(cached) return cached;
+
+    let aspect = 0.707;   // A4 纵向兜底
+    try{
+      if(pageRef.type === 'image'){
+        const url = await RenderModule.ensureObjectURL(pageRef.fileId);
+        const size = await new Promise(resolve=>{
+          const probe = new Image();
+          probe.onload = ()=>resolve({ w: probe.naturalWidth, h: probe.naturalHeight });
+          probe.onerror = ()=>resolve(null);
+          probe.src = url;
+        });
+        if(size && size.w > 0 && size.h > 0) aspect = size.w / size.h;
+      } else if(pageRef.type === 'pdf'){
+        const pdf = await RenderModule.ensurePdfLoaded(pageRef.fileId);
+        const page = await pdf.getPage(pageRef.pageIndex + 1);
+        const vp = page.getViewport({scale: 1});
+        if(vp.width > 0 && vp.height > 0) aspect = vp.width / vp.height;
+      }
+    }catch(e){ /* 用兜底比例 */ }
+
+    State.pageAspect.set(key, aspect);
+    return aspect;
+  },
+
+  async renderImagePage(pageRef, slot, token){
+    const url = await RenderModule.ensureObjectURL(pageRef.fileId);
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = '谱面';
+    // 等解码完成再落位：否则槽位高度为 0，自动滚动会误判成"已到底"而跳过本页
+    await new Promise(resolve=>{
+      if(img.complete){ resolve(); return; }
+      img.onload = ()=>resolve();
+      img.onerror = ()=>resolve();
+    });
+    if(token !== State.renderToken || !slot.isConnected) return;
+    const err = slot.querySelector('.page-error');
+    if(err) err.remove();
+    slot.appendChild(img);
+  },
+
+  async renderPDFPage(pageRef, slot, token){
+    // ensurePdfLoaded 内部会按需等待 pdf.js 就绪并给出明确错误
+    const pdf = await RenderModule.ensurePdfLoaded(pageRef.fileId);
+    const page = await pdf.getPage(pageRef.pageIndex + 1);
+
+    const dpr = window.devicePixelRatio || 1;
+    const slotW = slot.clientWidth || 400;
+    const slotH = slot.clientHeight || 600;
+
+    const baseViewport = page.getViewport({scale:1});
+    // 等比放进槽位（槽位已按页面宽高比预先算好，这里基本等于正好铺满）
+    let scale = Math.min(slotW / baseViewport.width, slotH / baseViewport.height);
+    scale = Math.max(0.1, scale);
+
+    const viewport = page.getViewport({scale: scale * dpr});
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    canvas.style.width = (viewport.width / dpr) + 'px';
+    canvas.style.height = (viewport.height / dpr) + 'px';
+
+    const ctx = canvas.getContext('2d');
+    await page.render({canvasContext: ctx, viewport}).promise;
+
+    // 渲染期间可能已经切屏/切歌，过期结果直接丢弃，不要往已卸载的槽位塞节点
+    if(token !== State.renderToken || !slot.isConnected) return;
+
+    const err = slot.querySelector('.page-error');
+    if(err) err.remove();
+    slot.appendChild(canvas);
+  },
+
+  async ensurePdfLoaded(fileId){
+    if(State.pdfDocCache.has(fileId)){
+      return State.pdfDocCache.get(fileId);
+    }
+    const lib = await PdfLib.get();          // 按需等待依赖，自带超时
+    if(!lib) throw new Error('PDF 组件不可用，请检查网络后刷新页面');
+    const fileRecord = await DB.getFile(fileId);
+    if(!fileRecord) throw new Error('PDF文件不存在');
+    const buf = await fileRecord.blob.arrayBuffer();
+    const pdf = await lib.getDocument({data: buf}).promise;
+    State.pdfDocCache.set(fileId, pdf);
+    return pdf;
+  },
+
+  cleanupAllResources(){
+    // 先让仍在飞行中的渲染任务失效，避免它们继续往已销毁的文档/已卸载的节点上操作
+    State.renderToken++;
+
+    // 释放 objectURLs
+    for(const url of State.objectURLs.values()){
+      try{ URL.revokeObjectURL(url); }catch(e){}
+    }
+    State.objectURLs.clear();
+
+    // 销毁 PDF 文档
+    for(const pdf of State.pdfDocCache.values()){
+      try{ pdf.destroy(); }catch(e){}
+    }
+    State.pdfDocCache.clear();
+
+    // 停止定时翻页
+    PagingModule.stopTimedPaging();
+  },
+
+  /* 同屏页数按钮的可用性：超过当前谱子总页数的档位置灰且不可点。
+     例如 2 页的谱子，3 / 4 / 6 都应该点不了。
+     没有选中歌曲时不做限制（此时也没有"页数"可参照）。 */
+  updatePagesCountButtons(){
+    const total = State.currentSong ? (State.currentSong.pages || []).length : 0;
+    document.querySelectorAll('#pages-count-group button').forEach(b=>{
+      const n = parseInt(b.dataset.count);
+      const blocked = total > 0 && n > total;
+      b.disabled = blocked;
+      b.title = blocked ? `当前谱子共 ${total} 页，无法 ${n} 页同屏` : '';
+    });
+  },
+
+  /* 打开新谱子时把同屏页数收敛到合法档位，
+     否则从一首 10 页的歌切到 2 页的歌会留下"6 页同屏"的无效状态。 */
+  clampPagesPerScreen(){
+    const total = State.currentSong ? (State.currentSong.pages || []).length : 0;
+    if(total <= 0 || State.pagesPerScreen <= total) return;
+    const allowed = [1,2,3,4,6].filter(v=>v <= total);
+    State.pagesPerScreen = allowed.length ? allowed[allowed.length - 1] : 1;
+    localStorage.setItem('gsr_pagesPerScreen', State.pagesPerScreen);
+    document.querySelectorAll('#pages-count-group button').forEach(b=>{
+      b.classList.toggle('active', parseInt(b.dataset.count) === State.pagesPerScreen);
+    });
+  },
+
+  setPagesPerScreen(n){
+    // 超出总页数的档位直接拒绝（按钮已置灰，这里再兜一层，快捷键也走同一条路径）
+    const total = State.currentSong ? (State.currentSong.pages || []).length : 0;
+    if(total > 0 && n > total){
+      Utils.toast(`当前谱子共 ${total} 页，无法 ${n} 页同屏`,'warning',1500);
+      return;
+    }
+    const oldN = State.pagesPerScreen || 1;
+    // 切换前正在看的那一页，切换后必须仍落在视野内。
+    // 旧实现先把新的 pagesPerScreen 写进 State，再算 floor(screen * n / n)，
+    // 结果恒等于原屏号，等于换算完全没生效，会跳到很远的页。
+    const firstPage = State.currentScreen * oldN;
+    State.pagesPerScreen = n;
+    State.currentScreen = Math.floor(firstPage / n);
+    if(State.currentSong){
+      const maxScreen = Math.max(0, Math.ceil(State.currentSong.pages.length / n) - 1);
+      if(State.currentScreen > maxScreen) State.currentScreen = maxScreen;
+    }
+    document.querySelectorAll('#pages-count-group button').forEach(b=>{
+      b.classList.toggle('active', parseInt(b.dataset.count) === n);
+    });
+    localStorage.setItem('gsr_pagesPerScreen', n);
+    RenderModule.renderScreen();
+  },
+
+  handleWheel(e){
+    if(e.ctrlKey) return;    // 已移除 ctrl+滚轮缩放
+    // 宽排模式下没有纵向可滚的空间，把滚轮转成横向滚动，避免用户以为卡住了
+    if(State.hScrollable){
+      const c = document.getElementById('pages-container');
+      if(c.scrollWidth > c.clientWidth){
+        e.preventDefault();
+        c.scrollLeft += (e.deltaY || 0);
+      }
+    }
+  },
+
+  toggleFullscreen(){
+    if(!document.fullscreenElement){
+      document.documentElement.requestFullscreen().catch(err=>{
+        Utils.toast('无法进入全屏：'+err.message,'error');
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  },
+
+  handleResize(){
+    UIModule.syncSidebarBackdrop();
+    if(State.resizeTimer) clearTimeout(State.resizeTimer);
+    State.resizeTimer = setTimeout(()=>{
+      // 保留滚动位置：否则窗口尺寸变化（含侧栏收放）会把阅读进度打回屏首
+      RenderModule.renderScreen({preserveScroll:true});
+    }, 200);
+  },
+};
+
+/* ==================== 翻页与定时翻页模块 ==================== */
+const PagingModule = {
+
+  TIMER_MIN: 3,          // 定时翻页间隔（秒）上下限
+  TIMER_MAX: 120,
+
+  nextScreen(){
+    if(!State.currentSong) return;
+    PagingModule.pauseAutoMode();
+    const maxScreen = Math.max(0, Math.ceil(State.currentSong.pages.length / State.pagesPerScreen) - 1);
+    if(State.currentScreen >= maxScreen){
+      PagingModule.nextSong();
+    } else {
+      State.currentScreen++;
+      RenderModule.renderScreen();
+      PagingModule.savePosition();
+    }
+  },
+
+  prevScreen(){
+    if(!State.currentSong) return;
+    PagingModule.pauseAutoMode();
+    if(State.currentScreen <= 0){
+      PagingModule.prevSong();
+    } else {
+      State.currentScreen--;
+      RenderModule.renderScreen();
+      PagingModule.savePosition();
+    }
+  },
+
+  nextSong(){
+    if(!State.currentSong) return;
+    const filtered = LibraryModule.getFilteredSongs();
+    const idx = filtered.findIndex(s=>s.id === State.currentSong.id);
+    if(idx >= 0 && idx < filtered.length - 1){
+      PagingModule.openSong(filtered[idx+1].id, 0);
+      Utils.toast('已切换到下一首：'+filtered[idx+1].title,'info',1500);
+    } else {
+      Utils.toast('已经是最后一首了','info',1500);
+    }
+  },
+
+  prevSong(){
+    if(!State.currentSong) return;
+    const filtered = LibraryModule.getFilteredSongs();
+    const idx = filtered.findIndex(s=>s.id === State.currentSong.id);
+    if(idx > 0){
+      PagingModule.openSong(filtered[idx-1].id, 0);
+      Utils.toast('已切换到上一首：'+filtered[idx-1].title,'info',1500);
+    } else {
+      Utils.toast('已经是第一首了','info',1500);
+    }
+  },
+
+  async openSong(songId, screen=0){
+    const song = await DB.getSong(songId);
+    if(!song){ Utils.toast('歌曲不存在','error'); return; }
+
+    RenderModule.cleanupAllResources();
+
+    State.currentSong = song;
+    RenderModule.clampPagesPerScreen();   // 同屏页数不能超过这首谱子的总页数
+    const maxScreen = Math.max(0, Math.ceil(song.pages.length / State.pagesPerScreen) - 1);
+    State.currentScreen = Math.min(Math.max(0, screen || 0), maxScreen);
+    song.lastOpenedAt = Date.now();
+    await DB.saveSong(song);
+
+    // 同步内存列表，否则"按最近打开"排序和"x 分钟前"不会随打开动作刷新
+    const idx = State.songs.findIndex(s=>s.id === songId);
+    if(idx >= 0) State.songs[idx] = song;
+    else State.songs.push(song);
+
+    await RenderModule.renderScreen();
+    UIModule.updateToolbar();
+    LibraryModule.renderSongList();   // 内部会带上当前项高亮
+
+    document.getElementById('append-btn').style.display = '';
+    PagingModule.savePosition();
+    // 移动端：选完歌就收起侧栏，把屏幕让给谱面
+    UIModule.closeSidebarOnMobile();
+  },
+
+  savePosition(){
+    if(State.currentSong){
+      localStorage.setItem('gsr_lastSongId', State.currentSong.id);
+      localStorage.setItem('gsr_lastScreen', State.currentScreen);
+    }
+  },
+
+  // 定时翻页：开启 / 暂停 / 恢复
+  toggleTimedPaging(){
+    if(!State.currentSong){ Utils.toast('请先选择歌曲','warning'); return; }
+    const t = State.timedPaging;
+    if(t.active && !t.paused){
+      t.paused = true;
+      if(t.rafId) cancelAnimationFrame(t.rafId);
+      document.getElementById('timer-btn').classList.remove('active');
+      document.getElementById('countdown-ring').classList.remove('show');
+      Utils.toast('定时翻页已暂停','info',1500);
+    } else if(t.active && t.paused){
+      t.paused = false;
+      t.remaining = t.interval;
+      t.lastTime = 0;
+      t.rafId = requestAnimationFrame(PagingModule.timerStep);
+      document.getElementById('timer-btn').classList.add('active');
+      document.getElementById('countdown-ring').classList.add('show');
+      Utils.toast('定时翻页已恢复','info',1500);
+    } else {
+      t.active = true;
+      t.paused = false;
+      t.remaining = t.interval;
+      t.lastTime = 0;
+      t.rafId = requestAnimationFrame(PagingModule.timerStep);
+      document.getElementById('timer-btn').classList.add('active');
+      document.getElementById('countdown-ring').classList.add('show');
+      Utils.toast(`定时翻页已启动 (${t.interval}s)`,'success',1500);
+    }
+  },
+
+  stopTimedPaging(){
+    const t = State.timedPaging;
+    t.active = false;
+    t.paused = false;
+    if(t.rafId){ cancelAnimationFrame(t.rafId); t.rafId = null; }
+    document.getElementById('timer-btn').classList.remove('active');
+    document.getElementById('countdown-ring').classList.remove('show');
+  },
+
+  timerStep(timestamp){
+    const t = State.timedPaging;
+    if(!t.active || t.paused) return;
+
+    if(!t.lastTime) t.lastTime = timestamp;
+    const delta = (timestamp - t.lastTime) / 1000;
+    t.lastTime = timestamp;
+    t.remaining -= delta;
+
+    const circumference = 2 * Math.PI * 24;
+    const progress = Math.max(0, t.remaining / t.interval);
+    document.getElementById('ring-fg').style.strokeDashoffset = circumference * (1 - progress);
+    document.getElementById('countdown-text').textContent = Math.ceil(Math.max(0, t.remaining));
+
+    if(t.remaining <= 0){
+      t.remaining = t.interval;
+      PagingModule.nextScreenTimed();
+    }
+
+    t.rafId = requestAnimationFrame(PagingModule.timerStep);
+  },
+
+  nextScreenTimed(){
+    if(!State.currentSong) return;
+    const maxScreen = Math.max(0, Math.ceil(State.currentSong.pages.length / State.pagesPerScreen) - 1);
+    if(State.currentScreen >= maxScreen){
+      PagingModule.nextSong();
+    } else {
+      State.currentScreen++;
+      RenderModule.renderScreen();
+      PagingModule.savePosition();
+    }
+  },
+
+  // 手动翻页时暂停倒计时，避免刚翻过去又被定时器翻走
+  pauseAutoMode(){
+    if(State.timedPaging.active && !State.timedPaging.paused){
+      State.timedPaging.paused = true;
+      if(State.timedPaging.rafId) cancelAnimationFrame(State.timedPaging.rafId);
+      document.getElementById('timer-btn').classList.remove('active');
+      document.getElementById('countdown-ring').classList.remove('show');
+    }
+  },
+
+  handleSpacebar(){
+    if(State.timedPaging.active) PagingModule.toggleTimedPaging();   // 定时翻页中 → 暂停/恢复
+    else PagingModule.nextScreen();
+  },
+
+  /* 设定定时翻页的间隔（秒）。来自工具栏的输入框，也可能被外部调用。
+     会写回输入框本身，保证界面显示与实际值一致（比如输入 999 被夹到 120）。 */
+  setTimerInterval(seconds){
+    const t = State.timedPaging;
+    t.interval = Utils.clamp(Math.round(Number(seconds) || t.interval), PagingModule.TIMER_MIN, PagingModule.TIMER_MAX);
+    localStorage.setItem('gsr_timerInterval', t.interval);
+
+    const input = document.getElementById('timer-interval-input');
+    if(input && Number(input.value) !== t.interval) input.value = t.interval;
+
+    // 正在倒计时的话，立刻按新间隔重新计时，让改动马上生效
+    if(t.active && !t.paused) t.remaining = t.interval;
+
+    Utils.toast(`定时翻页间隔：${t.interval} 秒`,'info',1200);
+    return t.interval;
+  },
+};
+
+/* ==================== 曲库管理模块 ==================== */
+const LibraryModule = {
+
+  async refresh(){
+    State.songs = await DB.getAllSongs();
+    LibraryModule.renderSongList();
+    LibraryModule.renderTagBar();
+    UIModule.updateStatusBar();
+  },
+
+  getFilteredSongs(){
+    let songs = [...State.songs];
+
+    const q = State.searchQuery.toLowerCase().trim();
+    if(q){
+      songs = songs.filter(s=>
+        (s.title||'').toLowerCase().includes(q) ||
+        (s.artist||'').toLowerCase().includes(q) ||
+        (s.tags||[]).some(t=>t.toLowerCase().includes(q))
+      );
+    }
+
+    if(State.activeTag){
+      songs = songs.filter(s=>(s.tags||[]).includes(State.activeTag));
+    }
+
+    const sortBy = State.sortBy;
+    songs.sort((a,b)=>{
+      if(a.favorite && !b.favorite) return -1;
+      if(!a.favorite && b.favorite) return 1;
+      let av, bv;
+      switch(sortBy){
+        case 'title': av=a.title||''; bv=b.title||''; return av.localeCompare(bv,'zh');
+        case 'artist': av=a.artist||''; bv=b.artist||''; return av.localeCompare(bv,'zh');
+        case 'lastOpenedAt': av=a.lastOpenedAt||0; bv=b.lastOpenedAt||0; return bv-av;
+        case 'createdAt':
+        default: av=a.createdAt||0; bv=b.createdAt||0; return bv-av;
+      }
+    });
+
+    return songs;
+  },
+
+  // 【修复2】歌曲列表 - 增加编辑按钮
+  renderSongList(){
+    const list = document.getElementById('song-list');
+    const songs = LibraryModule.getFilteredSongs();
+
+    // 设置多选模式 class
+    if(State.multiSelectMode){
+      list.classList.add('multi-select');
+    } else {
+      list.classList.remove('multi-select');
+    }
+
+    if(songs.length === 0){
+      list.innerHTML = '<li style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">暂无歌曲，点击下方导入按钮添加</li>';
+      return;
+    }
+
+    // 全部走事件委托（见 bindEvents 里对 #song-list 的监听），
+    // 不再把 id 拼进内联 onclick 字符串里，避免 id/文本里的引号破坏 HTML
+    list.innerHTML = songs.map(s=>{
+      const isSelected = State.selectedSongs.has(s.id);
+      return `
+      <li class="song-item ${State.currentSong && s.id===State.currentSong.id ? 'active':''} ${isSelected?'selected':''}" data-id="${Utils.escapeHtml(s.id)}">
+        <span class="song-checkbox ${isSelected?'checked':''}" data-act="select" title="选择"></span>
+        <span class="star-btn ${s.favorite?'starred':''}" data-act="fav">${s.favorite?'★':'☆'}</span>
+        <div class="song-info" data-act="open">
+          <div class="song-title">${Utils.escapeHtml(s.title)}</div>
+          <div class="song-meta">${Utils.escapeHtml(s.artist||'未知歌手')}</div>
+        </div>
+        <span class="song-pages">${(s.pages||[]).length}页</span>
+        <span class="edit-btn" data-act="edit" title="编辑">✎</span>
+      </li>
+    `}).join('');
+    
+    // 更新多选信息
+    LibraryModule.updateMultiSelectInfo();
+  },
+
+  // 曲库列表的点击分发（由 #song-list 上的委托监听调用）
+  handleListClick(e){
+    const item = e.target.closest('.song-item');
+    if(!item) return;
+    const songId = item.dataset.id;
+    if(!songId) return;
+
+    const hit = e.target.closest('[data-act]');
+    const act = hit ? hit.dataset.act : null;
+
+    if(act === 'select'){ LibraryModule.toggleSelect(songId); return; }
+    if(act === 'fav'){
+      LibraryModule.toggleFavorite(songId).catch(err=>Utils.toast('操作失败：'+(err.message||err),'error'));
+      return;
+    }
+    if(act === 'edit'){ LibraryModule.editSong(songId); return; }
+    // 其余区域：多选模式下切换选中，否则打开歌曲
+    if(State.multiSelectMode){
+      LibraryModule.toggleSelect(songId);
+    } else {
+      // 委托处理器不是 async，这里必须自己兜住 promise，否则失败会变成未捕获的 rejection
+      PagingModule.openSong(songId).catch(err=>Utils.toast('打开失败：'+(err.message||err),'error'));
+    }
+  },
+
+  // 标签栏的点击分发（由 #tag-bar 上的委托监听调用）
+  handleTagClick(e){
+    const chip = e.target.closest('.tag-chip');
+    if(!chip) return;
+    LibraryModule.toggleTag(chip.dataset.tag);
+  },
+
+  // 切换多选模式
+  toggleMultiSelect(){
+    State.multiSelectMode = !State.multiSelectMode;
+    if(!State.multiSelectMode){
+      State.selectedSongs.clear();
+    }
+    document.getElementById('multi-select-bar').classList.toggle('show', State.multiSelectMode);
+    document.getElementById('multiselect-btn').classList.toggle('active', State.multiSelectMode);
+    LibraryModule.renderSongList();
+  },
+
+  // 退出多选模式
+  exitMultiSelect(){
+    State.multiSelectMode = false;
+    State.selectedSongs.clear();
+    document.getElementById('multi-select-bar').classList.remove('show');
+    document.getElementById('multiselect-btn').classList.remove('active');
+    LibraryModule.renderSongList();
+  },
+
+  // 切换单个歌曲的选中状态
+  toggleSelect(songId){
+    if(State.selectedSongs.has(songId)){
+      State.selectedSongs.delete(songId);
+    } else {
+      State.selectedSongs.add(songId);
+    }
+    LibraryModule.renderSongList();
+  },
+
+  // 全选（当前过滤后的列表）——"全选"语义是选中全部可见项，不是叠加
+  selectAll(){
+    const songs = LibraryModule.getFilteredSongs();
+    State.selectedSongs.clear();
+    for(const s of songs){
+      State.selectedSongs.add(s.id);
+    }
+    LibraryModule.renderSongList();
+  },
+
+  // 取消全选
+  deselectAll(){
+    State.selectedSongs.clear();
+    LibraryModule.renderSongList();
+  },
+
+  // 更新多选信息显示
+  updateMultiSelectInfo(){
+    const info = document.getElementById('ms-info');
+    if(info){
+      const count = State.selectedSongs.size;
+      info.textContent = `已选 ${count} 首`;
+    }
+  },
+
+  // 确认批量删除
+  confirmBatchDelete(){
+    const count = State.selectedSongs.size;
+    if(count === 0){
+      Utils.toast('请先选择要删除的歌曲','warning');
+      return;
+    }
+    const html = `
+      <h2>确认批量删除</h2>
+      <p class="modal-subtitle">此操作不可撤销，将删除选中的 ${count} 首歌曲及其所有文件数据</p>
+      <div style="padding:16px;background:var(--surface-2);border-radius:var(--radius-sm);margin-bottom:16px">
+        <strong style="color:var(--danger)">⚠ 即将删除 ${count} 首歌曲</strong>
+        <br><span style="color:var(--text-muted);font-size:12px">删除后无法恢复，请确认已备份重要数据</span>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="UIModule.closeModal()">取消</button>
+        <button class="btn-danger" onclick="LibraryModule.doBatchDelete()">确认删除 ${count} 首</button>
+      </div>
+    `;
+    UIModule.showModal(html);
+  },
+
+  // 执行批量删除
+  async doBatchDelete(){
+    const ids = Array.from(State.selectedSongs);
+    UIModule.closeModal();
+    UIModule.showProgress('正在批量删除...');
+    
+    let deleted = 0;
+    let failed = 0;
+    const total = ids.length;
+    
+    try{
+      for(let i=0; i<ids.length; i++){
+        const songId = ids[i];
+        try{
+          await DB.deleteFilesBySongId(songId);
+          await DB.deleteSong(songId);
+          deleted++;
+        }catch(err){
+          console.error('删除失败:', songId, err);
+          failed++;
+        }
+        UIModule.updateProgress(i+1, total);
+        if(i % 5 === 0) await new Promise(r=>setTimeout(r, 0));
+      }
+      
+      // 从内存列表中移除已删除的歌曲
+      State.songs = State.songs.filter(s=>!State.selectedSongs.has(s.id));
+      
+      // 检查当前歌曲是否在被删除的列表中
+      if(State.currentSong && State.selectedSongs.has(State.currentSong.id)){
+        State.currentSong = null;
+        State.currentScreen = 0;
+        RenderModule.cleanupAllResources();
+        RenderModule.renderScreen();
+        UIModule.updateToolbar();
+        document.getElementById('append-btn').style.display = 'none';
+        localStorage.removeItem('gsr_lastSongId');
+        localStorage.removeItem('gsr_lastScreen');
+      }
+      
+      // 清空选中状态并退出多选模式
+      State.selectedSongs.clear();
+      State.multiSelectMode = false;
+      document.getElementById('multi-select-bar').classList.remove('show');
+      document.getElementById('multiselect-btn').classList.remove('active');
+      
+      UIModule.hideProgress();
+      let msg = `成功删除 ${deleted} 首歌曲`;
+      if(failed > 0) msg += `（${failed} 首删除失败）`;
+      Utils.toast(msg, 'success');
+      LibraryModule.renderSongList();
+      LibraryModule.renderTagBar();
+    }catch(err){
+      UIModule.hideProgress();
+      LibraryModule.renderSongList();
+      Utils.toast('批量删除失败：'+(err.message||err),'error');
+    }
+  },
+
+  renderTagBar(){
+    const tagBar = document.getElementById('tag-bar');
+    const tagSet = new Set();
+    for(const s of State.songs){
+      (s.tags||[]).forEach(t=>tagSet.add(t));
+    }
+    const tags = Array.from(tagSet).sort();
+    if(tags.length === 0){
+      tagBar.innerHTML = '';
+      return;
+    }
+    // 用 data-tag 承载标签值 + 事件委托，标签里出现引号也不会破坏 DOM
+    tagBar.innerHTML = tags.map(t=>
+      `<span class="tag-chip ${State.activeTag===t?'active':''}" data-tag="${Utils.escapeHtml(t)}" title="${Utils.escapeHtml(t)}">${Utils.escapeHtml(t)}</span>`
+    ).join('');
+  },
+
+  toggleTag(tag){
+    if(tag === undefined || tag === null) return;
+    State.activeTag = State.activeTag === tag ? null : tag;
+    LibraryModule.renderSongList();
+    LibraryModule.renderTagBar();
+  },
+
+  async toggleFavorite(songId){
+    const song = await DB.getSong(songId);
+    if(!song) return;
+    song.favorite = !song.favorite;
+    await DB.saveSong(song);
+    const idx = State.songs.findIndex(s=>s.id===songId);
+    if(idx >= 0) State.songs[idx] = song;
+    LibraryModule.renderSongList();
+    if(State.currentSong && State.currentSong.id === songId){
+      State.currentSong = song;
+      UIModule.updateToolbar();
+    }
+  },
+
+  async toggleFavoriteCurrent(){
+    if(!State.currentSong) return;
+    await LibraryModule.toggleFavorite(State.currentSong.id);
+  },
+
+  // 【修复2】编辑歌曲信息
+  editSong(songId){
+    // 兜底只在 id 确实等于当前歌曲时才生效，否则会静默打开并保存到错误的歌曲上
+    const song = State.songs.find(s=>s.id===songId)
+      || (State.currentSong && State.currentSong.id === songId ? State.currentSong : null);
+    if(!song){ Utils.toast('歌曲不存在，可能已被删除','warning'); return; }
+    const sid = Utils.jsId(song.id);
+    const html = `
+      <h2>编辑歌曲信息</h2>
+      <p class="modal-subtitle">${Utils.escapeHtml(song.title)}</p>
+      <div class="form-group">
+        <label>歌名</label>
+        <input type="text" id="edit-title" value="${Utils.escapeHtml(song.title||'')}">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>歌手</label>
+          <input type="text" id="edit-artist" value="${Utils.escapeHtml(song.artist||'')}">
+        </div>
+        <div class="form-group">
+          <label>调性（如 G、Cm）</label>
+          <input type="text" id="edit-key" value="${Utils.escapeHtml(song.key||'')}">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>变调夹品位</label>
+          <input type="number" id="edit-capo" value="${song.capo||0}" min="0" max="12">
+        </div>
+        <div class="form-group">
+          <label>标签（逗号分隔）</label>
+          <input type="text" id="edit-tags" value="${Utils.escapeHtml((song.tags||[]).join(', '))}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>备注</label>
+        <textarea id="edit-note" rows="3">${Utils.escapeHtml(song.note||'')}</textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-danger" onclick="LibraryModule.confirmDelete('${sid}')">删除歌曲</button>
+        <button class="btn-secondary" onclick="UIModule.closeModal()">取消</button>
+        <button class="btn-primary" onclick="LibraryModule.saveEdit('${sid}')">保存</button>
+      </div>
+    `;
+    UIModule.showModal(html);
+  },
+
+  async saveEdit(songId){
+    const song = await DB.getSong(songId);
+    if(!song) return;
+    song.title = document.getElementById('edit-title').value.trim() || '未命名';
+    song.artist = document.getElementById('edit-artist').value.trim();
+    song.key = document.getElementById('edit-key').value.trim();
+    song.capo = parseInt(document.getElementById('edit-capo').value) || 0;
+    const tagsStr = document.getElementById('edit-tags').value.trim();
+    song.tags = tagsStr ? tagsStr.split(/[,，]/).map(t=>t.trim()).filter(Boolean) : [];
+    song.note = document.getElementById('edit-note').value.trim();
+
+    try{
+      await DB.saveSong(song);
+      const idx = State.songs.findIndex(s=>s.id===songId);
+      if(idx >= 0) State.songs[idx] = song;
+      if(State.currentSong && State.currentSong.id === songId){
+        State.currentSong = song;
+      }
+      UIModule.closeModal();
+      Utils.toast('已保存','success');
+      LibraryModule.renderSongList();
+      LibraryModule.renderTagBar();
+      UIModule.updateToolbar();
+    }catch(err){
+      Utils.toast('保存失败：'+err.message,'error');
+    }
+  },
+
+  confirmDelete(songId){
+    const song = State.songs.find(s=>s.id===songId);
+    if(!song) return;
+    const sid = Utils.jsId(song.id);
+    const html = `
+      <h2>确认删除</h2>
+      <p class="modal-subtitle">此操作不可撤销，将删除歌曲及其所有文件数据</p>
+      <div style="padding:16px;background:var(--surface-2);border-radius:var(--radius-sm);margin-bottom:16px">
+        <strong>${Utils.escapeHtml(song.title)}</strong>
+        ${song.artist ? '<br><span style="color:var(--text-muted)">'+Utils.escapeHtml(song.artist)+'</span>' : ''}
+        <br><span style="color:var(--text-muted);font-size:12px">${(song.pages||[]).length} 页</span>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="LibraryModule.editSong('${sid}')">返回</button>
+        <button class="btn-danger" onclick="LibraryModule.doDelete('${sid}')">确认删除</button>
+      </div>
+    `;
+    UIModule.showModal(html);
+  },
+
+  async doDelete(songId){
+    // 先从内存中取出歌曲对象（用于提示文案），避免后续引用未定义变量
+    const song = State.songs.find(s=>s.id===songId);
+    const songTitle = song ? song.title : '未知歌曲';
+    try{
+      await DB.deleteFilesBySongId(songId);
+      await DB.deleteSong(songId);
+
+      // 从内存列表中移除
+      State.songs = State.songs.filter(s=>s.id!==songId);
+      
+      // 如果删除的是当前正在查看的歌曲，清理显示区
+      if(State.currentSong && State.currentSong.id === songId){
+        State.currentSong = null;
+        State.currentScreen = 0;
+        RenderModule.cleanupAllResources();
+        RenderModule.renderScreen();
+        UIModule.updateToolbar();
+        document.getElementById('append-btn').style.display = 'none';
+        localStorage.removeItem('gsr_lastSongId');
+        localStorage.removeItem('gsr_lastScreen');
+      }
+      UIModule.closeModal();
+      Utils.toast('已删除「'+songTitle+'」','success');
+      LibraryModule.renderSongList();
+      LibraryModule.renderTagBar();
+    }catch(err){
+      // 即使出错也刷新列表，保持与数据库一致
+      LibraryModule.renderSongList();
+      Utils.toast('删除失败：'+(err.message||err),'error');
+    }
+  },
+};
+
+/* ==================== 备份与恢复模块 ==================== */
+const BackupModule = {
+
+  async backup(){
+    if(typeof JSZip === 'undefined'){
+      Utils.toast('JSZip 未加载，无法备份','error');
+      return;
+    }
+    const songs = await DB.getAllSongs();
+    if(songs.length === 0){
+      Utils.toast('曲库为空，无需备份','warning');
+      return;
+    }
+
+    UIModule.showProgress('正在打包备份...');
+
+    try{
+      const zip = new JSZip();
+      const manifest = {
+        version: 1,
+        exportDate: new Date().toISOString(),
+        songs: [],
+      };
+
+      const allFiles = await DB.getAllFiles();
+      const fileMap = new Map();
+      for(const f of allFiles){
+        fileMap.set(f.fileId, f);
+      }
+
+      let processed = 0;
+      const total = songs.length;
+
+      for(const song of songs){
+        const songManifest = {
+          id: song.id,
+          title: song.title,
+          artist: song.artist,
+          tags: song.tags || [],
+          key: song.key || '',
+          capo: song.capo || 0,
+          note: song.note || '',
+          favorite: song.favorite || false,
+          createdAt: song.createdAt,
+          lastOpenedAt: song.lastOpenedAt,
+          pages: [],
+        };
+
+        for(const page of song.pages){
+          const file = fileMap.get(page.fileId);
+          if(!file){
+            songManifest.pages.push({...page, missing:true});
+            continue;
+          }
+
+          const safeName = BackupModule.sanitizeFileName(file.name);
+          const zipPath = `${song.id}/${safeName}`;
+          if(!zip.file('songs/'+zipPath)){
+            const blob = await file.blob;
+            zip.file('songs/'+zipPath, blob);
+          }
+
+          songManifest.pages.push({
+            type: page.type,
+            fileId: page.fileId,
+            pageIndex: page.pageIndex,
+            fileName: file.name,
+            mimeType: file.mimeType,
+            zipPath: zipPath,
+          });
+        }
+
+        manifest.songs.push(songManifest);
+        processed++;
+        UIModule.updateProgress(processed, total);
+        if(processed % 5 === 0) await new Promise(r=>setTimeout(r,0));
+      }
+
+      zip.file('manifest.json', JSON.stringify(manifest, null, 2));
+
+      UIModule.updateProgressTitle('正在压缩...');
+      const content = await zip.generateAsync({type:'blob', compression:'DEFLATE'}, (meta)=>{
+        UIModule.updateProgressTitle(`正在压缩... ${Math.round(meta.percent)}%`);
+      });
+
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `吉他谱备份_${new Date().toISOString().slice(0,10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url), 1000);
+
+      UIModule.hideProgress();
+      Utils.toast(`备份完成：${songs.length} 首歌曲`,'success');
+      localStorage.setItem('gsr_lastBackup', Date.now());
+    }catch(err){
+      UIModule.hideProgress();
+      Utils.toast('备份失败：'+err.message,'error',5000);
+      console.error(err);
+    }
+  },
+
+  sanitizeFileName(name){
+    return name.replace(/[^a-zA-Z0-9._\-\u4e00-\u9fa5]/g, '_');
+  },
+
+  async restore(){
+    if(typeof JSZip === 'undefined'){
+      Utils.toast('JSZip 未加载，无法恢复','error');
+      return;
+    }
+    document.getElementById('restore-input').value = '';
+    document.getElementById('restore-input').click();
+  },
+
+  async handleRestore(event){
+    const file = event.target.files[0];
+    if(!file) return;
+
+    UIModule.showProgress('正在读取备份...');
+
+    try{
+      const zip = await JSZip.loadAsync(file);
+      const manifestFile = zip.file('manifest.json');
+      if(!manifestFile){
+        UIModule.hideProgress();
+        Utils.toast('无效的备份文件：缺少 manifest.json','error');
+        return;
+      }
+
+      const manifestText = await manifestFile.async('text');
+      const manifest = JSON.parse(manifestText);
+
+      if(!manifest.version || manifest.version > 2){
+        UIModule.hideProgress();
+        Utils.toast('不支持的备份版本','error');
+        return;
+      }
+
+      BackupModule.showRestoreConfirm(manifest, zip);
+    }catch(err){
+      UIModule.hideProgress();
+      Utils.toast('读取备份失败：'+err.message,'error');
+      console.error(err);
+    }
+  },
+
+  showRestoreConfirm(manifest, zip){
+    const html = `
+      <h2>恢复备份</h2>
+      <p class="modal-subtitle">备份包含 ${manifest.songs.length} 首歌曲，导出于 ${new Date(manifest.exportDate).toLocaleString('zh-CN')}</p>
+      <div class="form-group">
+        <label>恢复模式</label>
+        <select id="restore-mode">
+          <option value="merge">合并（保留现有歌曲，跳过重复）</option>
+          <option value="overwrite">覆盖（清空现有歌曲后恢复）</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="UIModule.closeModal()">取消</button>
+        <button class="btn-primary" onclick="BackupModule.executeRestore()">开始恢复</button>
+      </div>
+    `;
+    State._restoreManifest = manifest;
+    State._restoreZip = zip;
+    UIModule.showModal(html);
+  },
+
+  async executeRestore(){
+    const mode = document.getElementById('restore-mode').value;
+    const manifest = State._restoreManifest;
+    const zip = State._restoreZip;
+    UIModule.closeModal();
+
+    UIModule.showProgress('正在恢复...');
+
+    try{
+      if(mode === 'overwrite'){
+        await DB.clearAll();
+        State.songs = [];
+        State.currentSong = null;
+        RenderModule.cleanupAllResources();
+      }
+
+      let processed = 0;
+      const total = manifest.songs.length;
+      let importedSongs = 0;
+      let missingFiles = 0;
+      const missingReport = [];
+
+      for(const songM of manifest.songs){
+        const songId = (mode === 'merge') ? Utils.uuid() : songM.id;
+
+        if(mode === 'merge'){
+          const existing = await DB.getSong(songM.id);
+          if(existing){
+            processed++;
+            UIModule.updateProgress(processed, total);
+            continue;
+          }
+        }
+
+        const pages = [];
+        const fileCache = new Map();
+
+        for(const pageM of songM.pages){
+          if(pageM.missing || !pageM.zipPath){
+            missingFiles++;
+            missingReport.push(`${songM.title} - 第${(pageM.pageIndex||0)+1}页`);
+            continue;
+          }
+
+          const zipFile = zip.file('songs/'+pageM.zipPath);
+          if(!zipFile){
+            missingFiles++;
+            missingReport.push(`${songM.title} - ${pageM.fileName||'未知文件'}`);
+            continue;
+          }
+
+          let fileId = fileCache.get(pageM.zipPath);
+          if(!fileId){
+            fileId = Utils.uuid();
+            fileCache.set(pageM.zipPath, fileId);
+
+            const blob = await zipFile.async('blob');
+            const fileRecord = {
+              fileId,
+              songId,
+              name: pageM.fileName || pageM.zipPath.split('/').pop(),
+              mimeType: pageM.mimeType || 'application/octet-stream',
+              blob,
+              size: blob.size,
+              hash: 'restored_' + fileId,
+            };
+            await DB.saveFile(fileRecord);
+          }
+
+          pages.push({
+            type: pageM.type,
+            fileId,
+            pageIndex: pageM.pageIndex || 0,
+          });
+        }
+
+        if(pages.length > 0){
+          const song = {
+            id: songId,
+            title: songM.title,
+            artist: songM.artist,
+            tags: songM.tags || [],
+            key: songM.key || '',
+            capo: songM.capo || 0,
+            note: songM.note || '',
+            favorite: songM.favorite || false,
+            createdAt: songM.createdAt || Date.now(),
+            lastOpenedAt: songM.lastOpenedAt || 0,
+            pages,
+          };
+          await DB.saveSong(song);
+          importedSongs++;
+        }
+
+        processed++;
+        UIModule.updateProgress(processed, total);
+        if(processed % 5 === 0) await new Promise(r=>setTimeout(r,0));
+      }
+
+      UIModule.hideProgress();
+      let msg = `恢复完成：导入 ${importedSongs} 首歌曲`;
+      if(missingFiles > 0) msg += `，${missingFiles} 个文件缺失`;
+      Utils.toast(msg, missingFiles > 0 ? 'warning' : 'success', 5000);
+
+      State._restoreManifest = null;
+      State._restoreZip = null;
+      await LibraryModule.refresh();
+    }catch(err){
+      UIModule.hideProgress();
+      Utils.toast('恢复失败：'+err.message,'error',5000);
+      console.error(err);
+    }
+  },
+};
+
+/* ==================== UI 模块 ==================== */
+const UIModule = {
+
+  // 统一处理侧栏开合；persist=false 时只改界面不写偏好（例如移动端启动时默认收起）
+  applySidebarState(collapsed, persist){
+    State.sidebarCollapsed = collapsed;
+    document.getElementById('sidebar').classList.toggle('collapsed', collapsed);
+    UIModule.syncSidebarBackdrop();
+    if(persist !== false) localStorage.setItem('gsr_sidebarCollapsed', collapsed);
+    setTimeout(()=>RenderModule.handleResize(), 300);
+  },
+
+  toggleSidebar(){
+    UIModule.applySidebarState(!State.sidebarCollapsed);
+  },
+
+  // 移动端侧栏是浮层，需要有遮罩；桌面端永远不显示遮罩
+  syncSidebarBackdrop(){
+    const backdrop = document.getElementById('sidebar-backdrop');
+    if(!backdrop) return;
+    const mobile = window.innerWidth <= 768;
+    backdrop.classList.toggle('show', mobile && !State.sidebarCollapsed);
+  },
+
+  // 移动端选完歌后收起侧栏，把屏幕让给谱面
+  closeSidebarOnMobile(){
+    if(window.innerWidth <= 768 && !State.sidebarCollapsed){
+      UIModule.applySidebarState(true, false);
+    }
+  },
+
+  updateToolbar(){
+    const titleEl = document.getElementById('current-title');
+    const starEl = document.getElementById('current-star');
+    const keyEl = document.getElementById('key-info');
+    const capoEl = document.getElementById('capo-info');
+
+    if(State.currentSong){
+      titleEl.textContent = State.currentSong.title;
+      starEl.textContent = State.currentSong.favorite ? '★' : '☆';
+      starEl.style.color = State.currentSong.favorite ? 'var(--star)' : '';
+
+      if(State.currentSong.key){
+        keyEl.textContent = 'Key: ' + State.currentSong.key;
+        keyEl.style.display = '';
+      } else keyEl.style.display = 'none';
+
+      if(State.currentSong.capo && State.currentSong.capo > 0){
+        capoEl.textContent = 'Capo: ' + State.currentSong.capo + '品';
+        capoEl.style.display = '';
+      } else capoEl.style.display = 'none';
+    } else {
+      titleEl.textContent = '未选择歌曲';
+      starEl.textContent = '☆';
+      starEl.style.color = '';
+      keyEl.style.display = 'none';
+      capoEl.style.display = 'none';
+    }
+  },
+
+  updateStatusBar(){
+    const info = document.getElementById('page-info');
+    const progressFill = document.getElementById('status-progress-fill');
+    const prevBtn = document.getElementById('prev-song-btn');
+    const nextBtn = document.getElementById('next-song-btn');
+
+    if(!State.currentSong){
+      info.textContent = State.songs.length > 0 ? `曲库共 ${State.songs.length} 首歌曲` : '未选择歌曲';
+      progressFill.style.width = '0%';
+      prevBtn.disabled = true;
+      nextBtn.disabled = true;
+      return;
+    }
+
+    const totalPages = State.currentSong.pages.length;
+    const startPage = State.currentScreen * State.pagesPerScreen + 1;
+    const endPage = Math.min(startPage + State.pagesPerScreen - 1, totalPages);
+    const totalScreens = Math.max(1, Math.ceil(totalPages / State.pagesPerScreen));
+
+    info.innerHTML = `<strong>${State.currentSong.title}</strong> · 第 ${startPage}-${endPage} 页 / 共 ${totalPages} 页 · 屏 ${State.currentScreen+1}/${totalScreens}`;
+    progressFill.style.width = ((State.currentScreen+1) / totalScreens * 100) + '%';
+
+    const filtered = LibraryModule.getFilteredSongs();
+    const idx = filtered.findIndex(s=>s.id === State.currentSong.id);
+    prevBtn.disabled = idx <= 0;
+    nextBtn.disabled = idx >= filtered.length - 1;
+  },
+
+  showModal(html){
+    const overlay = document.getElementById('modal-overlay');
+    const modal = document.getElementById('modal');
+    modal.innerHTML = html;
+    overlay.classList.add('show');
+  },
+
+  closeModal(){
+    document.getElementById('modal-overlay').classList.remove('show');
+  },
+
+  showProgress(title){
+    document.getElementById('progress-title').textContent = title;
+    document.getElementById('progress-fill').style.width = '0%';
+    document.getElementById('progress-text').textContent = '0 / 0';
+    document.getElementById('progress-overlay').classList.add('show');
+  },
+
+  hideProgress(){
+    document.getElementById('progress-overlay').classList.remove('show');
+  },
+
+  updateProgress(current, total){
+    const pct = total > 0 ? (current / total * 100) : 0;
+    document.getElementById('progress-fill').style.width = pct + '%';
+    document.getElementById('progress-text').textContent = `${current} / ${total}`;
+  },
+
+  updateProgressTitle(title){
+    document.getElementById('progress-title').textContent = title;
+  },
+
+  // 【修复4】皮肤切换。silent=true 用于启动时恢复上次的主题，不再弹"已切换皮肤"
+  setTheme(theme, silent){
+    State.theme = theme;
+    if(theme === 'dark'){
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+    document.querySelectorAll('.theme-btn').forEach(btn=>{
+      btn.classList.toggle('active', btn.dataset.theme === theme);
+    });
+    localStorage.setItem('gsr_theme', theme);
+    if(!silent) Utils.toast('已切换皮肤', 'info', 1000);
+  },
+
+  loadTheme(){
+    const saved = localStorage.getItem('gsr_theme') || 'dark';
+    UIModule.setTheme(saved, true);
+  },
+
+  showFirstTimeGuide(){
+    if(State.songs.length === 0){
+      document.getElementById('empty-state').style.display = 'flex';
+    }
+  },
+
+  checkBackupReminder(){
+    const lastBackup = localStorage.getItem('gsr_lastBackup');
+    if(!lastBackup && State.songs.length > 0){
+      Utils.toast('提示：建议定期备份曲库','info',4000);
+    } else if(lastBackup){
+      const days = (Date.now() - parseInt(lastBackup)) / 86400000;
+      if(days > 30){
+        Utils.toast('已超过30天未备份，建议尽快备份','warning',4000);
+      }
+    }
+  },
+};
+
+/* ==================== 快捷键模块 ==================== */
+const Shortcuts = {
+  handleKeyDown(e){
+    // 焦点在输入框时快捷键失效
+    const tag = e.target.tagName;
+    if(tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'){
+      if(e.key === 'Escape') e.target.blur();
+      return;
+    }
+
+    // 进度遮罩期间屏蔽全部快捷键，避免在弹层背后误操作
+    const progress = document.getElementById('progress-overlay');
+    if(progress && progress.classList.contains('show')) return;
+
+    // 模态框打开时只响应 Esc，否则 '1'/'n'/'b' 会在弹窗背后换页换歌
+    const modalOverlay = document.getElementById('modal-overlay');
+    if(modalOverlay && modalOverlay.classList.contains('show')){
+      if(e.key === 'Escape') UIModule.closeModal();
+      return;
+    }
+
+    switch(e.key){
+      case 'ArrowRight': case 'PageDown':
+        e.preventDefault();
+        PagingModule.nextScreen();
+        break;
+      case 'ArrowLeft': case 'PageUp':
+        e.preventDefault();
+        PagingModule.prevScreen();
+        break;
+      case ' ':
+        e.preventDefault();
+        PagingModule.handleSpacebar();
+        break;
+      case '1': case '2': case '3': case '4': case '6':
+        e.preventDefault();
+        RenderModule.setPagesPerScreen(parseInt(e.key));
+        break;
+      case 'f': case 'F':
+        e.preventDefault();
+        RenderModule.toggleFullscreen();
+        break;
+      case 'Escape':
+        if(document.fullscreenElement) document.exitFullscreen();
+        else UIModule.closeModal();
+        break;
+      case 's': case 'S':
+        e.preventDefault();
+        document.getElementById('search-input').focus();
+        break;
+      case 'i': case 'I':
+        e.preventDefault();
+        if(State.currentSong) LibraryModule.editSong(State.currentSong.id);
+        break;
+      case 'n': case 'N':
+        e.preventDefault();
+        PagingModule.nextSong();
+        break;
+      case 'b': case 'B':
+        e.preventDefault();
+        PagingModule.prevSong();
+        break;
+    }
+  },
+};
+
+/* ==================== 触屏支持 ==================== */
+const Touch = {
+  startX:0, startY:0, startTime:0,
+
+  handleTouchStart(e){
+    if(e.touches.length !== 1) return;
+    Touch.startX = e.touches[0].clientX;
+    Touch.startY = e.touches[0].clientY;
+    Touch.startTime = Date.now();
+  },
+
+  handleTouchEnd(e){
+    if(e.changedTouches.length !== 1) return;
+    // 宽排模式下横向滑动是用来滚谱面的，不要再同时触发切屏
+    if(State.hScrollable) return;
+    const dx = e.changedTouches[0].clientX - Touch.startX;
+    const dy = e.changedTouches[0].clientY - Touch.startY;
+    const dt = Date.now() - Touch.startTime;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    if(absDx > 50 && absDx > absDy * 1.5){
+      if(dx > 0) PagingModule.prevScreen();
+      else PagingModule.nextScreen();
+      return;
+    }
+
+    if(dt < 300 && absDx < 10 && absDy < 10){
+      const x = e.changedTouches[0].clientX;
+      const w = window.innerWidth;
+      if(x < w / 3) PagingModule.prevScreen();
+      else if(x > w * 2 / 3) PagingModule.nextScreen();
+    }
+  },
+};
+
+/* ==================== 初始化模块 ==================== */
+const App = {
+
+  // 只观察依赖加载结果用于提示，不阻塞任何启动步骤
+  watchDeps(){
+    const p = window.__depsReady;
+    if(!p || !p.then) return;
+    p.then(()=>{
+      if(typeof pdfjsLib === 'undefined'){
+        Utils.toast('PDF 组件未能加载（网络不通或 CDN 被拦截），PDF 功能暂不可用；图片功能不受影响','warning',7000);
+      }
+      if(typeof JSZip === 'undefined'){
+        Utils.toast('JSZip 未能加载，备份与恢复功能暂不可用','warning',7000);
+      }
+    }).catch(()=>{});
+  },
+
+  async init(){
+    // 依赖加载绝不阻塞启动：CDN 挂起时也必须先把界面、数据库、事件绑定都准备好。
+    // PDF 能力由 PdfLib.get() 在真正需要时按需等待，自带超时。
+    App.watchDeps();
+
+    // 加载皮肤
+    UIModule.loadTheme();
+
+    // 初始化数据库
+    try{
+      await DB.init();
+    }catch(err){
+      Utils.toast('数据库初始化失败：'+err.message,'error',5000);
+      return;
+    }
+
+    // 加载界面偏好（旧版本存下的值可能越界，这里统一校验一遍）
+    const pps = parseInt(localStorage.getItem('gsr_pagesPerScreen'));
+    if([1,2,3,4,6].includes(pps)) State.pagesPerScreen = pps;
+    const savedTimer = parseInt(localStorage.getItem('gsr_timerInterval'));
+    if(isFinite(savedTimer)) State.timedPaging.interval = Utils.clamp(savedTimer, PagingModule.TIMER_MIN, PagingModule.TIMER_MAX);
+    // 定时翻页间隔输入框回填
+    const timerInput = document.getElementById('timer-interval-input');
+    if(timerInput){
+      timerInput.value = State.timedPaging.interval;
+      timerInput.min = PagingModule.TIMER_MIN;
+      timerInput.max = PagingModule.TIMER_MAX;
+    }
+
+    // 排序偏好必须在这里读：refresh() 内部就会渲染列表，
+    // 放到 bindEvents 里才读会导致首次加载的排序不生效
+    const savedSort = localStorage.getItem('gsr_sortBy');
+    if(savedSort) State.sortBy = savedSort;
+    const sortSelect = document.getElementById('sort-select');
+    if(sortSelect) sortSelect.value = State.sortBy;
+
+    const savedSidebar = localStorage.getItem('gsr_sidebarCollapsed');
+    if(savedSidebar === 'true'){
+      State.sidebarCollapsed = true;
+      document.getElementById('sidebar').classList.add('collapsed');
+    }
+    // 移动端默认收起侧栏（只改界面，不覆盖桌面端偏好）
+    if(window.innerWidth <= 768 && !State.sidebarCollapsed){
+      UIModule.applySidebarState(true, false);
+    }
+
+    // 更新工具栏按钮状态
+    document.querySelectorAll('#pages-count-group button').forEach(b=>{
+      b.classList.toggle('active', parseInt(b.dataset.count) === State.pagesPerScreen);
+    });
+
+    // 加载曲库
+    await LibraryModule.refresh();
+
+    // 恢复上次浏览位置
+    const lastSongId = localStorage.getItem('gsr_lastSongId');
+    const lastScreen = localStorage.getItem('gsr_lastScreen');
+    if(lastSongId){
+      const song = await DB.getSong(lastSongId);
+      if(song){
+        await PagingModule.openSong(lastSongId, lastScreen ? parseInt(lastScreen) : 0);
+      }
+    }
+
+    // 显示引导
+    UIModule.showFirstTimeGuide();
+    UIModule.checkBackupReminder();
+
+    // 绑定事件
+    App.bindEvents();
+  },
+
+  bindEvents(){
+    // 文件输入
+    document.getElementById('file-input').addEventListener('change', e=>ImportModule.handleFileInput(e));
+    document.getElementById('folder-input').addEventListener('change', e=>ImportModule.handleFileInput(e));
+    document.getElementById('restore-input').addEventListener('change', e=>BackupModule.handleRestore(e));
+    document.getElementById('append-input').addEventListener('change', e=>ImportModule.handleAppend(e));
+
+    // 搜索
+    document.getElementById('search-input').addEventListener('input', Utils.debounce(e=>{
+      State.searchQuery = e.target.value;
+      LibraryModule.renderSongList();
+    }, 200));
+
+    // 排序（偏好的读取已提前到 App.init，这里只负责响应变化）
+    document.getElementById('sort-select').addEventListener('change', e=>{
+      State.sortBy = e.target.value;
+      localStorage.setItem('gsr_sortBy', State.sortBy);
+      LibraryModule.renderSongList();
+    });
+
+    // 曲库列表 / 标签栏：事件委托，替代逐条拼内联 onclick
+    document.getElementById('song-list').addEventListener('click', e=>LibraryModule.handleListClick(e));
+    document.getElementById('tag-bar').addEventListener('click', e=>LibraryModule.handleTagClick(e));
+
+    // 拖拽
+    const displayArea = document.getElementById('display-area');
+    const emptyState = document.getElementById('empty-state');
+
+    displayArea.addEventListener('dragover', e=>{
+      e.preventDefault();
+      displayArea.classList.add('drag-over');
+    });
+    displayArea.addEventListener('dragleave', e=>{
+      if(e.target === displayArea) displayArea.classList.remove('drag-over');
+    });
+    displayArea.addEventListener('drop', e=>ImportModule.handleDrop(e));
+
+    if(emptyState){
+      emptyState.addEventListener('dragover', e=>{
+        e.preventDefault();
+        emptyState.classList.add('drag-over');
+      });
+      // 没有 dragleave 会把高亮留在界面上（拖进来又移走但不松手）
+      emptyState.addEventListener('dragleave', e=>{
+        if(e.target === emptyState) emptyState.classList.remove('drag-over');
+      });
+      emptyState.addEventListener('drop', e=>ImportModule.handleDrop(e));
+    }
+
+    // 滚轮：宽排模式下把纵向滚轮转成横向滚动
+    displayArea.addEventListener('wheel', e=>RenderModule.handleWheel(e), {passive:false});
+
+    // 窗口尺寸变化
+    window.addEventListener('resize', ()=>RenderModule.handleResize());
+
+    /* 全屏变化：
+       1. 隐藏/恢复上下工具条，把面积全给谱面
+       2. 侧栏若处于展开状态一并收起，退出全屏时还原
+       3. 可用高度变了必须重排（保留滚动位置，否则阅读进度会被打回屏首） */
+    document.addEventListener('fullscreenchange', ()=>{
+      const on = !!document.fullscreenElement;
+      document.body.classList.toggle('fullscreen', on);
+
+      let sidebarChanged = false;
+      if(on && !State.sidebarCollapsed){
+        State._sidebarWasOpen = true;
+        UIModule.applySidebarState(true, false);   // 不写偏好，退出时还要还原
+        sidebarChanged = true;
+      } else if(!on && State._sidebarWasOpen){
+        State._sidebarWasOpen = false;
+        UIModule.applySidebarState(false, false);
+        sidebarChanged = true;
+      }
+
+      if(on){
+        Utils.toast('已进入全屏，按 Esc 或 F 退出','info',2500);
+      }
+      // 侧栏收放本身会触发布局重排（applySidebarState 内部安排了），避免重复渲染
+      if(!sidebarChanged) setTimeout(()=>RenderModule.renderScreen({preserveScroll:true}), 100);
+    });
+
+    // 键盘快捷键
+    document.addEventListener('keydown', e=>Shortcuts.handleKeyDown(e));
+
+    // 触屏
+    displayArea.addEventListener('touchstart', e=>Touch.handleTouchStart(e), {passive:true});
+    displayArea.addEventListener('touchend', e=>Touch.handleTouchEnd(e), {passive:true});
+
+    // 模态框点击外部关闭
+    document.getElementById('modal-overlay').addEventListener('click', e=>{
+      if(e.target.id === 'modal-overlay') UIModule.closeModal();
+    });
+
+    // 搜索框 Escape 退出
+    document.getElementById('search-input').addEventListener('keydown', e=>{
+      if(e.key === 'Escape') e.target.blur();
+    });
+
+    // 页面卸载前清理
+    window.addEventListener('beforeunload', ()=>{
+      RenderModule.cleanupAllResources();
+    });
+  },
+};
+
+/* 模块暴露给内联 onclick 使用。
+   新增需要被 onclick 调用的模块时，记得同步加进这张表。
+   （曲库列表与标签栏已改为事件委托，不再依赖内联 onclick） */
+Object.assign(window, {
+  Utils,
+  DB,
+  ImportModule,
+  RenderModule,
+  PagingModule,
+  LibraryModule,
+  BackupModule,
+  UIModule,
+});
+
+// 启动
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', ()=>App.init());
+} else {
+  App.init();
+}
+
+})();
+</script>
+</body>
+</html>
